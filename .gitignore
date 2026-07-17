@@ -1,0 +1,24 @@
+# Local environment
+.env
+
+# The graph database (host bind mount) — derived data, not source.
+/data/*
+!/data/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Scratch/probe artifacts
+.probe/

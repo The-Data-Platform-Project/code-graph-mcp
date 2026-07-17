@@ -1,0 +1,35 @@
+# Standalone compose project for the code-graph MCP service. Unrelated to any
+# other Docker network/project on this machine.
+services:
+  code-graph-mcp:
+    build: .
+    image: code-graph-mcp:latest
+    container_name: code-graph-mcp
+    restart: unless-stopped
+
+    # --- hard memory backstop (design target is well under this) ---
+    mem_limit: "500m"
+    memswap_limit: "500m"
+
+    # --- hardening: unprivileged, read-only rootfs, no privilege escalation ---
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+    # Loopback-only: reachable from this machine, nowhere else.
+    ports:
+      - "127.0.0.1:8765:8765"
+
+    volumes:
+      # SQLite graph on a host bind mount -> survives `down`/rebuild, inspectable.
+      - ./data:/data
+      # Parent dir of every indexable repo, mounted read-only.
+      - ${REPOS_HOST_PATH}:/workspaces:ro
+
+    environment:
+      - GRAPH_DB_PATH=/data/graph.db
+      - WORKSPACES_ROOT=/workspaces
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8765

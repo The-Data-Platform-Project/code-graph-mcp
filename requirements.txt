@@ -1,0 +1,6 @@
+# Direct dependencies (intent). Exact, fully-resolved pins used for the image
+# build live in requirements.lock.txt so runtime never fetches anything.
+mcp==1.28.1                 # official MCP SDK (FastMCP, streamable HTTP server)
+tree-sitter==0.26.0         # parser runtime
+tree-sitter-python==0.25.0  # bundled Python grammar (wheel; no runtime download)
+uvicorn==0.51.0             # ASGI server FastMCP runs the HTTP transport on

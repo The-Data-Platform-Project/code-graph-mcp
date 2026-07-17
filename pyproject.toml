@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "code-graph-mcp"
+version = "1.0.0"
+description = "Persistent, queryable code knowledge graph served over MCP"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = [
+    "mcp==1.28.1",
+    "tree-sitter==0.26.0",
+    "tree-sitter-python==0.25.0",
+    "uvicorn==0.51.0",
+]
+
+[project.scripts]
+code-graph-mcp = "code_graph.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
