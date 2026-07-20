@@ -16,6 +16,12 @@ KIND_CLASS = "Class"
 KIND_FUNCTION = "Function"
 KIND_METHOD = "Method"
 KIND_INTERFACE = "Interface"
+# Data/config file nodes (JSON, YAML, TOML, XML, ini, Dockerfile, ...). Kept
+# distinct from code `File` nodes so they can be surfaced in symbol search
+# without flooding it with every code file in the repo.
+KIND_CONFIG = "Config"
+# A named service defined inside a compose file (docker-compose `services:`).
+KIND_SERVICE = "Service"
 
 # --- Edge types ------------------------------------------------------------
 EDGE_CONTAINS = "CONTAINS"

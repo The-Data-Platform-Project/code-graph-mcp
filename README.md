@@ -4,8 +4,15 @@ A persistent, containerized **code knowledge graph** served over MCP. It parses
 your repositories with [tree-sitter](https://tree-sitter.github.io/) into a
 SQLite graph of files, classes, functions, methods, imports and **call chains**,
 then exposes structural queries to Claude Code as MCP tools — so a question like
-*"what calls this function?"* or *"what does this file depend on?"* costs **one
-graph query** instead of a chain of `grep`/`read` calls.
+*"what calls this function?"*, *"what does this page load?"* or *"what does this
+file depend on?"* costs **one graph query** instead of a chain of `grep`/`read`
+calls.
+
+It indexes a whole modern repo, not just one language: **Python** and
+**JavaScript/TypeScript** (full symbol + call graph), **HTML/CSS** (asset and
+`@import` dependencies), **JSON/YAML** (npm dependencies, Docker Compose
+services), and arbitrary **config files** (searchable file nodes). See
+[Supported languages](#supported-languages).
 
 It is a fully-owned alternative to third-party code-graph MCP tools: no telemetry,
 no network egress, everything installed at build time, runs as a standing local
@@ -30,12 +37,29 @@ service bound to loopback only.
 
 ---
 
+## Supported languages
+
+| Files | What is extracted |
+|---|---|
+| `.py` | Files, classes, functions, methods; imports, calls, inheritance, type use |
+| `.js` `.jsx` `.mjs` `.cjs` | Files, classes, functions (incl. arrow consts), methods; ES/`require`/dynamic imports, calls, `extends` |
+| `.ts` `.tsx` | The above plus `interface` nodes and `implements` edges |
+| `.html` `.htm` | File node; `<script src>`, `<link href>`, and other `src`/`href` dependencies (in-project or external) |
+| `.css` | File node; `@import` (and `@import url(...)`) stylesheet dependencies |
+| `.json` | Config node; **`package.json`** → npm dependency edges |
+| `.yaml` `.yml` | Config node; **Docker Compose** → `Service` nodes + `depends_on` edges |
+| `.toml` `.xml` `.ini` `.cfg` `.env`, `Dockerfile`, `Makefile`, dotfiles, … | Searchable `Config` file node (grammar-less generic fallback) |
+
+Cross-file references resolve *across* languages: an HTML page links to the JS
+modules and stylesheets it loads, a JS bundler-style `import './x.css'` links to
+the CSS file, and a Compose service links to the services it depends on.
+
 ## Architecture
 
 | Layer | Choice |
 |---|---|
 | Language | Python 3.11 (`python:3.11-slim`, glibc) |
-| Parsing | `tree-sitter` + `tree-sitter-python` (grammar bundled in the wheel) |
+| Parsing | `tree-sitter` + per-language grammar wheels (Python, JS/TS, HTML, CSS, YAML); config formats parsed grammar-lessly |
 | Storage | stdlib `sqlite3`, WAL mode, hand-written SQL, structure-only |
 | MCP | official `mcp` SDK / `FastMCP`, streamable HTTP on `127.0.0.1:8765` |
 
@@ -59,11 +83,18 @@ Source layout:
 src/code_graph/
   config.py              env-driven configuration
   db.py                  schema, WAL connection, checkpoint
-  languages.py           extension -> grammar/extractor registry (1-line to add a language)
+  languages.py           filename/extension -> grammar/extractor registry
+  naming.py              shared file-qname scheme + cross-file reference resolution
   models.py              Node/Edge/Import value types + kind/edge constants
   extractors/
-    base.py              Extractor interface
+    base.py              Extractor interface (grammar-less extractors get tree=None)
     python.py            Python -> nodes/edges/imports
+    javascript.py        JavaScript / TypeScript (JSX/TSX)
+    html.py              <script>/<link>/href dependencies
+    css.py               @import dependencies
+    json.py              config node + package.json npm dependencies
+    yaml.py              config node + docker-compose services
+    generic.py           grammar-less fallback for arbitrary config files
   indexer.py             walk + per-file pipeline + batched commits + incremental reindex
   resolver.py            graduated call-resolution cascade
   queries.py             read-side graph queries backing the tools
@@ -139,7 +170,8 @@ trace_call_path(qualified_name="pkg.module.function", direction="callers", depth
 
 ## Graph schema
 
-**Nodes** (`kind`): `File`, `Class`, `Function`, `Method`, `Interface` — with
+**Nodes** (`kind`): `File`, `Class`, `Function`, `Method`, `Interface`, plus
+`Config` (data/config files) and `Service` (Docker Compose services) — with
 qualified name, file path, line span, and signature where applicable.
 
 **Edges** (`edge_type`): `CONTAINS` (file→class→method nesting), `IMPORTS`,
@@ -161,8 +193,16 @@ a real node, most-precise first, stopping at the first hit:
 4. **Unique in repo** — a single project-wide symbol of that name.
 5. **Unresolved** — left honest; no fuzzy/similarity guessing.
 
-The `Interface`/`IMPLEMENTS` kinds exist in the schema for future languages; the
-Python extractor emits `Class`/`INHERITS`.
+Code files (`.py`, `.js`, `.ts`, ...) get a **dotted, extension-stripped**
+qualified name (`src/app/util.js` → `src.app.util`), so the resolver's cascade
+treats every code language uniformly. HTML/CSS/config files keep their
+**repo-relative path** as the qualified name and participate only in file→file
+`IMPORTS` edges (resolved by exact match). The single `naming.file_qname` helper
+makes both schemes line up, so an HTML `<script src="app.js">` links to the JS
+module node and `<link href="a.css">` links to the CSS file node.
+
+The `Interface`/`IMPLEMENTS` kinds are emitted by the TypeScript extractor
+(`interface`, `class ... implements`); Python emits `Class`/`INHERITS`.
 
 ---
 
@@ -191,15 +231,24 @@ stdlib, as a CI/acceptance gate.
 
 ## Adding a language
 
-1. Add the grammar to `requirements*.txt` (e.g. `tree-sitter-javascript`).
+1. Add the grammar to `requirements*.txt` (e.g. `tree-sitter-go`).
 2. Write an extractor in `src/code_graph/extractors/` implementing `Extractor`.
 3. Add **one line** to the registry in `languages.py`:
 
 ```python
-".js": LanguageSpec("javascript", "tree_sitter_javascript", JsExtractor),
+".go": LanguageSpec("go", "tree_sitter_go", GoExtractor),
 ```
 
-Nothing else in the pipeline needs to change.
+Nothing else in the pipeline needs to change. Two knobs cover the awkward cases:
+
+- **Non-default grammar symbol.** Some wheels export the `Language` under a named
+  function (TypeScript ships `language_typescript`/`language_tsx`). Pass it as
+  `language_symbol="language_typescript"`.
+- **No grammar at all.** Pass `grammar_module=None` for a format you index by
+  presence/heuristics rather than a full parse; the extractor is then called with
+  `tree=None`. This backs the JSON and generic-config extractors. Extensionless
+  files (`Dockerfile`) and dotfiles (`.gitignore`) are registered by exact
+  basename in `_FILENAME_REGISTRY`.
 
 ---
 

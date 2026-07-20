@@ -31,6 +31,7 @@ from ..models import (
     Import,
     Node,
 )
+from ..naming import file_qname
 from .base import Extractor
 
 # Builtin type names not worth recording as USES_TYPE edges: they never resolve
@@ -260,11 +261,9 @@ class PythonExtractor(Extractor):
     # -- path -> module qualified name -------------------------------------
     @staticmethod
     def module_qname(file_path: str) -> str:
-        p = file_path[:-3] if file_path.endswith(".py") else file_path
-        parts = [seg for seg in p.split("/") if seg]
-        if len(parts) > 1 and parts[-1] == "__init__":
-            parts = parts[:-1]
-        return ".".join(parts)
+        # Delegates to the shared scheme so Python and every other code language
+        # agree on how a file path becomes a dotted module name.
+        return file_qname(file_path)
 
     @staticmethod
     def package_parts(file_path: str, module_qname: str) -> list[str]:

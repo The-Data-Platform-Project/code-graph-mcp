@@ -22,3 +22,6 @@ venv/
 
 # Scratch/probe artifacts
 .probe/
+
+# Machine-local Claude Code settings (not shared)
+.claude/settings.local.json

@@ -15,7 +15,10 @@ from .config import Config
 from .models import EDGE_CALLS
 from .util import like_pattern, safe_join
 
-_SYMBOL_KINDS = ("Class", "Function", "Method", "Interface")
+# Kinds returned by symbol search. Config/Service files are included so config
+# and compose services are findable; plain code `File` nodes are excluded to keep
+# search from being flooded with every source file in the repo.
+_SYMBOL_KINDS = ("Class", "Function", "Method", "Interface", "Config", "Service")
 _MAX_TRACE_NODES = 500
 _MAX_TRACE_BREADTH = 50
 

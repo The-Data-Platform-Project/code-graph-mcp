@@ -25,14 +25,15 @@ from typing import Iterator
 
 from . import db, resolver
 from .config import Config
-from .languages import get_extractor, get_parser, is_supported
+from .languages import extractor_for, parser_for, spec_for
 from .models import FileResult
 
-# Directories never worth walking into.
+# Directories never worth walking into (dot-directories are pruned separately).
 _PRUNE_DIRS = frozenset(
     {
-        "__pycache__", "node_modules", "venv", "env", ".env",
+        "__pycache__", "node_modules", "venv", "env",
         "dist", "build", ".eggs", "site-packages", ".hg", ".svn",
+        "coverage", "bower_components", "vendor", "target",
     }
 )
 
@@ -225,8 +226,7 @@ def _walk_source_files(abs_root: Path) -> Iterator[tuple[Path, str]]:
             d for d in dirnames if not d.startswith(".") and d not in _PRUNE_DIRS
         ]
         for fn in filenames:
-            ext = os.path.splitext(fn)[1]
-            if not is_supported(ext):
+            if spec_for(fn) is None:
                 continue
             abs_file = Path(dirpath) / fn
             rel = abs_file.relative_to(abs_root).as_posix()
@@ -247,17 +247,35 @@ def _read_capped(path: Path, max_bytes: int) -> bytes | None:
 
 
 def _parse_and_extract(rel: str, data: bytes) -> FileResult | None:
-    ext = os.path.splitext(rel)[1]
-    parser = get_parser(ext)
-    extractor = get_extractor(ext)
-    if parser is None or extractor is None:
+    spec = spec_for(rel)
+    if spec is None:
+        return None
+    extractor = extractor_for(spec)
+    if spec.grammar_module is None:
+        # Grammar-less extractor (generic config / JSON): no parse tree.
+        return _safe_extract(extractor, None, data, rel)
+    parser = parser_for(spec)
+    if parser is None:
+        # Declared grammar could not be loaded: skip the file, don't abort.
         return None
     tree = parser.parse(data)
     try:
-        return extractor.extract(tree, data, rel)
+        return _safe_extract(extractor, tree, data, rel)
     finally:
         # Drop the tree explicitly before the next file is touched.
         del tree
+
+
+def _safe_extract(extractor, tree, data: bytes, rel: str) -> FileResult | None:
+    """Run an extractor, skipping (not crashing) on a per-file extraction error.
+
+    A single malformed or pathological file must never abort a whole-repo index
+    of a standing service.
+    """
+    try:
+        return extractor.extract(tree, data, rel)
+    except Exception:
+        return None
 
 
 def _buffer(

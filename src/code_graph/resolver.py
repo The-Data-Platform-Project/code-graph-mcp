@@ -22,6 +22,7 @@ from typing import Optional
 from . import db
 from .models import (
     EDGE_CALLS,
+    EDGE_IMPLEMENTS,
     EDGE_INHERITS,
     EDGE_USES_TYPE,
     KIND_CLASS,
@@ -32,6 +33,11 @@ from .models import (
 
 _CALL_KINDS = (KIND_FUNCTION, KIND_METHOD, KIND_CLASS)
 _TYPE_KINDS = (KIND_CLASS, KIND_INTERFACE)
+_TYPE_EDGES = (EDGE_INHERITS, EDGE_IMPLEMENTS, EDGE_USES_TYPE)
+# Edges whose raw destination must be resolved through the cascade.
+_RESOLVE_EDGES = (EDGE_CALLS, EDGE_INHERITS, EDGE_IMPLEMENTS, EDGE_USES_TYPE)
+# Heads that refer to the enclosing class instance (Python self/cls, JS this).
+_SELF_HEADS = ("self", "cls", "this")
 _BATCH = 1000
 
 
@@ -39,14 +45,14 @@ def reset_resolution(con: sqlite3.Connection, repo: str) -> None:
     """Restore resolvable edges to their raw, unresolved state (for reindex)."""
     con.execute(
         "UPDATE edges SET dst_qname = dst_raw, resolved = 0 "
-        "WHERE repo = ? AND edge_type IN (?, ?, ?)",
-        (repo, EDGE_CALLS, EDGE_INHERITS, EDGE_USES_TYPE),
+        "WHERE repo = ? AND edge_type IN (?, ?, ?, ?)",
+        (repo, *_RESOLVE_EDGES),
     )
     con.commit()
 
 
 def resolve_repo(write_con: sqlite3.Connection, db_path: Path, repo: str) -> None:
-    """Resolve every CALLS/INHERITS/USES_TYPE edge for `repo`, and flag IMPORTS."""
+    """Resolve every CALLS/INHERITS/IMPLEMENTS/USES_TYPE edge, and flag IMPORTS."""
     _flag_imports(write_con, repo)
 
     read_con = db.connect(db_path)
@@ -54,8 +60,8 @@ def resolve_repo(write_con: sqlite3.Connection, db_path: Path, repo: str) -> Non
         resolver = _Resolver(read_con, repo)
         cur = read_con.execute(
             "SELECT id, edge_type, src_qname, dst_raw, src_file FROM edges "
-            "WHERE repo = ? AND edge_type IN (?, ?, ?) ORDER BY src_file",
-            (repo, EDGE_CALLS, EDGE_INHERITS, EDGE_USES_TYPE),
+            "WHERE repo = ? AND edge_type IN (?, ?, ?, ?) ORDER BY src_file",
+            (repo, *_RESOLVE_EDGES),
         )
         updates: list[tuple[str, int]] = []
         cur_file: Optional[str] = None
@@ -134,8 +140,8 @@ class _Resolver:
             if self._exists(cand):
                 return cand
 
-        # 2. self / cls -> member of the enclosing class.
-        if head in ("self", "cls") and len(parts) >= 2:
+        # 2. self / cls / this -> member of the enclosing class.
+        if head in _SELF_HEADS and len(parts) >= 2:
             cls = self._enclosing_class(src_qname)
             if cls:
                 cand = cls + "." + parts[1]
@@ -200,7 +206,7 @@ class _Resolver:
         key = (name, edge_type)
         if key in self._unique_cache:
             return self._unique_cache[key]
-        kinds = _TYPE_KINDS if edge_type in (EDGE_INHERITS, EDGE_USES_TYPE) else _CALL_KINDS
+        kinds = _TYPE_KINDS if edge_type in _TYPE_EDGES else _CALL_KINDS
         rows = self._con.execute(
             "SELECT qualified_name FROM nodes "
             "WHERE repo = ? AND name = ? AND kind IN ({}) LIMIT 2".format(

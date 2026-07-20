@@ -1,6 +1,16 @@
 # Direct dependencies (intent). Exact, fully-resolved pins used for the image
 # build live in requirements.lock.txt so runtime never fetches anything.
-mcp==1.28.1                 # official MCP SDK (FastMCP, streamable HTTP server)
-tree-sitter==0.26.0         # parser runtime
-tree-sitter-python==0.25.0  # bundled Python grammar (wheel; no runtime download)
-uvicorn==0.51.0             # ASGI server FastMCP runs the HTTP transport on
+mcp==1.28.1                     # official MCP SDK (FastMCP, streamable HTTP server)
+tree-sitter==0.26.0             # parser runtime
+uvicorn==0.51.0                 # ASGI server FastMCP runs the HTTP transport on
+
+# Grammar wheels (bundled; no runtime download). Each declares tree-sitter only
+# under its optional [core] extra, so all coexist with the pinned 0.26 runtime.
+tree-sitter-python==0.25.0      # Python
+tree-sitter-javascript==0.25.0  # JavaScript / JSX / MJS / CJS
+tree-sitter-typescript==0.23.2  # TypeScript / TSX
+tree-sitter-html==0.23.2        # HTML
+tree-sitter-css==0.25.0         # CSS
+tree-sitter-yaml==0.7.2         # YAML (docker-compose services)
+# JSON, TOML, XML, ini and other config formats are handled grammar-lessly
+# (stdlib json for package.json; a generic file-node extractor otherwise).

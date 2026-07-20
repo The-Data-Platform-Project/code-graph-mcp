@@ -109,3 +109,38 @@ def conn(indexed: Config):
     con = db.connect(indexed.db_path)
     yield con
     con.close()
+
+
+@pytest.fixture
+def make_repo(tmp_path: Path):
+    """Factory: write a {rel_path: content} repo, index it, return (conn, config).
+
+    Used by the multi-language extractor tests to build small, focused samples
+    without repeating the temp-dir/index boilerplate. Connections are closed at
+    teardown.
+    """
+    conns = []
+
+    def _make(files: dict, name: str = "repo"):
+        root = tmp_path / "ws"
+        repo = root / name
+        for rel, content in files.items():
+            p = repo / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(content, encoding="utf-8")
+        cfg = Config(
+            db_path=tmp_path / "graph.db",
+            workspaces_root=root,
+            host="127.0.0.1",
+            port=8765,
+            max_file_bytes=1_500_000,
+            commit_batch_files=200,
+        )
+        Indexer(cfg).index_full(name, repo, name)
+        con = db.connect(cfg.db_path)
+        conns.append(con)
+        return con, cfg
+
+    yield _make
+    for con in conns:
+        con.close()
