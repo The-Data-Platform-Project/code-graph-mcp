@@ -54,6 +54,7 @@ _TS = LanguageSpec(
 _TSX = LanguageSpec(
     "tsx", "tree_sitter_typescript", JavaScriptExtractor, "language_tsx"
 )
+_HTML = LanguageSpec("html", "tree_sitter_html", HtmlExtractor)
 _GENERIC = LanguageSpec("generic", None, GenericFileExtractor)
 
 
@@ -68,9 +69,13 @@ _REGISTRY: dict[str, LanguageSpec] = {
     # TypeScript.
     ".ts": _TS,
     ".tsx": _TSX,
-    # Web assets.
-    ".html": LanguageSpec("html", "tree_sitter_html", HtmlExtractor),
-    ".htm": LanguageSpec("html", "tree_sitter_html", HtmlExtractor),
+    # Web assets. HTML files also get a Jinja pass (template inheritance, macros);
+    # the standalone Jinja extensions reuse the same extractor.
+    ".html": _HTML,
+    ".htm": _HTML,
+    ".jinja": _HTML,
+    ".jinja2": _HTML,
+    ".j2": _HTML,
     ".css": LanguageSpec("css", "tree_sitter_css", CssExtractor),
     # Data / config. JSON is grammar-less (stdlib json for the package.json
     # special case); YAML uses its grammar to read compose `services:`.

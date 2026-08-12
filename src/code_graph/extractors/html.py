@@ -22,6 +22,7 @@ from tree_sitter import Tree
 from ..models import EDGE_IMPORTS, KIND_FILE, Edge, FileResult, Import, Node
 from ..naming import file_qname, is_external, resolve_ref
 from .base import Extractor
+from .jinja import scan_jinja
 
 # Attributes whose value is a URL/path to another resource.
 _REF_ATTRS = frozenset({"src", "href"})
@@ -52,6 +53,8 @@ class HtmlExtractor(Extractor):
         def add_ref(ref: str) -> None:
             if not ref:
                 return
+            if "{{" in ref or "{%" in ref:
+                return  # Jinja-templated attribute value (e.g. {{ url_for(...) }})
             if is_external(ref):
                 imports.append(Import(file_path, ref, ref, "external"))
                 edges.append(Edge(EDGE_IMPORTS, qname, ref, ref, file_path, 0))
@@ -74,6 +77,15 @@ class HtmlExtractor(Extractor):
                     add_ref(value)
             for i in range(n.named_child_count):
                 stack.append(n.named_child(i))
+
+        # Jinja layer: template inheritance/includes, macro defs, and macro uses
+        # that the HTML grammar parses as plain text.
+        j_nodes, j_edges, j_imports = scan_jinja(
+            source.decode("utf-8", "replace"), file_path
+        )
+        nodes.extend(j_nodes)
+        edges.extend(j_edges)
+        imports.extend(j_imports)
 
         return _dedupe(FileResult(nodes=nodes, edges=edges, imports=imports))
 

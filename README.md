@@ -9,9 +9,11 @@ file depend on?"* costs **one graph query** instead of a chain of `grep`/`read`
 calls.
 
 It indexes a whole modern repo, not just one language: **Python** and
-**JavaScript/TypeScript** (full symbol + call graph), **HTML/CSS** (asset and
-`@import` dependencies), **JSON/YAML** (npm dependencies, Docker Compose
-services), and arbitrary **config files** (searchable file nodes). See
+**JavaScript/TypeScript** (full symbol + call graph, including IIFE-wrapped and
+nested functions), **HTML/Jinja templates** (asset deps, template
+inheritance/includes, and macro definitions + uses), **CSS** (`@import`
+dependencies), **JSON/YAML** (npm dependencies, Docker Compose services), and
+arbitrary **config files** (searchable file nodes). See
 [Supported languages](#supported-languages).
 
 It is a fully-owned alternative to third-party code-graph MCP tools: no telemetry,
@@ -42,9 +44,9 @@ service bound to loopback only.
 | Files | What is extracted |
 |---|---|
 | `.py` | Files, classes, functions, methods; imports, calls, inheritance, type use |
-| `.js` `.jsx` `.mjs` `.cjs` | Files, classes, functions (incl. arrow consts), methods; ES/`require`/dynamic imports, calls, `extends` |
+| `.js` `.jsx` `.mjs` `.cjs` | Files, classes, functions (incl. arrow consts, **nested and IIFE-wrapped**), methods; ES/`require`/dynamic imports, calls, `extends` |
 | `.ts` `.tsx` | The above plus `interface` nodes and `implements` edges |
-| `.html` `.htm` | File node; `<script src>`, `<link href>`, and other `src`/`href` dependencies (in-project or external) |
+| `.html` `.htm` `.jinja` `.j2` | File node; `<script src>`/`<link href>` deps (incl. absolute `/static/…`); **Jinja** `{% extends/include/import/from %}` template deps and `{% macro %}` definitions + uses |
 | `.css` | File node; `@import` (and `@import url(...)`) stylesheet dependencies |
 | `.json` | Config node; **`package.json`** → npm dependency edges |
 | `.yaml` `.yml` | Config node; **Docker Compose** → `Service` nodes + `depends_on` edges |
@@ -52,7 +54,12 @@ service bound to loopback only.
 
 Cross-file references resolve *across* languages: an HTML page links to the JS
 modules and stylesheets it loads, a JS bundler-style `import './x.css'` links to
-the CSS file, and a Compose service links to the services it depends on.
+the CSS file, a Jinja template links to the ones it `extends`/`includes` and the
+macros it calls, and a Compose service links to the services it depends on.
+Root-relative refs whose base is a web doc-root or template root (`/static/app.js`,
+`{% extends "base.html" %}`) resolve by a **unique trailing-path match** — so an
+app served from a subdirectory links up correctly, and an ambiguous ref is left
+honestly unresolved rather than guessed.
 
 ## Architecture
 

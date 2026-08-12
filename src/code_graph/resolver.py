@@ -54,6 +54,7 @@ def reset_resolution(con: sqlite3.Connection, repo: str) -> None:
 def resolve_repo(write_con: sqlite3.Connection, db_path: Path, repo: str) -> None:
     """Resolve every CALLS/INHERITS/IMPLEMENTS/USES_TYPE edge, and flag IMPORTS."""
     _flag_imports(write_con, repo)
+    _resolve_rooted_assets(write_con, repo)
 
     read_con = db.connect(db_path)
     try:
@@ -92,6 +93,69 @@ def _flush(con: sqlite3.Connection, updates: list[tuple[str, int]]) -> None:
     con.executemany(
         "UPDATE edges SET dst_qname = ?, resolved = 1 WHERE id = ?", updates
     )
+    con.commit()
+
+
+def _escape_like(s: str) -> str:
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _resolve_rooted_assets(con: sqlite3.Connection, repo: str) -> None:
+    """Resolve refs whose base is a doc/template *root*, not the repo root.
+
+    Two cases share one mechanism:
+    - Absolute asset paths (``/static/app.js``) assume the web doc-root is the
+      repo root, but the app is often served from a subdirectory (Flask serves
+      ``/static/`` from ``webapp/app/static/``), so the exact-root candidate
+      matches no node.
+    - Jinja template refs (``{% extends "base.html" %}``) are resolved against
+      the template search path, again not the repo root.
+
+    In both, we recover the link when *exactly one* file's path ends with the ref
+    as a trailing path-segment sequence — a multi-segment, uniqueness-gated match,
+    so an ambiguous ref is left honestly unresolved rather than guessed.
+
+    Updates both the ``imports`` row (so `get_dependencies` reports it in-project)
+    and the ``IMPORTS`` edge (so cross-file graph queries connect).
+    """
+    candidates = con.execute(
+        "SELECT rowid, file_path, local_name, target FROM imports "
+        "WHERE repo = ? AND ("
+        "  (kind = 'asset' AND local_name LIKE '/%') OR kind = 'template'"
+        ") AND NOT EXISTS (SELECT 1 FROM nodes n "
+        "  WHERE n.repo = imports.repo AND n.qualified_name = imports.target)",
+        (repo,),
+    ).fetchall()
+    if not candidates:
+        return
+
+    import_updates: list[tuple[str, int]] = []
+    edge_updates: list[tuple[str, str, str, str]] = []
+    for row in candidates:
+        rooted = row["local_name"].lstrip("/").split("?", 1)[0].split("#", 1)[0]
+        if not rooted:
+            continue
+        matches = con.execute(
+            "SELECT qualified_name FROM nodes "
+            "WHERE repo = ? AND kind = 'File' "
+            "AND (file_path = ? OR file_path LIKE ? ESCAPE '\\') LIMIT 2",
+            (repo, rooted, "%/" + _escape_like(rooted)),
+        ).fetchall()
+        if len(matches) == 1:
+            new_target = matches[0]["qualified_name"]
+            import_updates.append((new_target, row["rowid"]))
+            edge_updates.append((new_target, repo, row["file_path"], row["local_name"]))
+
+    if import_updates:
+        con.executemany(
+            "UPDATE imports SET target = ? WHERE rowid = ?", import_updates
+        )
+    if edge_updates:
+        con.executemany(
+            "UPDATE edges SET dst_qname = ?, resolved = 1 "
+            "WHERE repo = ? AND edge_type = 'IMPORTS' AND src_file = ? AND dst_raw = ?",
+            edge_updates,
+        )
     con.commit()
 
 
