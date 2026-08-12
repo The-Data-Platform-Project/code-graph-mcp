@@ -28,8 +28,8 @@ Everything Docker/pytest runs via `wsl -e bash -lc "..."`.
 - `indexer.py` — `os.walk` generator → per-file parse → extract → buffer → batched commit → discard tree. One tree in memory at a time (the load-bearing memory discipline). `reindex` is content-hash incremental.
 - `languages.py` — filename/extension → `LanguageSpec` registry. `spec_for(rel)` resolves basename first (Dockerfile/dotfiles), then extension. A spec may be **grammar-less** (`grammar_module=None` → extractor called with `tree=None`); `language_symbol` names a non-default grammar entry (TS).
 - `naming.py` — the shared file-qname scheme. **Code files** (`.py/.js/.ts/...`) → dotted, extension-stripped qname (`src/app/util.js` → `src.app.util`); **everything else** → repo-relative path. `resolve_ref`/`js_import_module` compute cross-file targets by path arithmetic (no FS access).
-- `extractors/` — `python.py`, `javascript.py` (JS+TS), `html.py`, `css.py`, `json.py`, `yaml.py`, `generic.py`. Each returns a `FileResult(nodes, edges, imports)` and must not retain the tree.
-- `resolver.py` — resolves `CALLS/INHERITS/IMPLEMENTS/USES_TYPE` raw strings to real nodes via a cascade: import-map → self/cls/this → same-module → unique-in-repo → honestly unresolved. Runs after the whole repo is indexed.
+- `extractors/` — `python.py`, `javascript.py` (JS+TS), `html.py`, `jinja.py`, `css.py`, `json.py`, `yaml.py`, `generic.py`. Each returns a `FileResult(nodes, edges, imports)` and must not retain the tree. `javascript.py` treats **anonymous function scopes (IIFEs, callbacks) as transparent** — nested named defs attribute to the nearest named container — so IIFE-wrapped modules still yield nodes. `jinja.py` is a regex pass (no grammar) invoked by `html.py`: `{% macro %}` → `Function` node, `{% extends/include/import/from %}` → template `IMPORTS`, macro uses → `CALLS` (restricted to known bindings).
+- `resolver.py` — resolves `CALLS/INHERITS/IMPLEMENTS/USES_TYPE` raw strings to real nodes via a cascade: import-map → self/cls/this → same-module → unique-in-repo → honestly unresolved. Also resolves root-relative asset/template `IMPORTS` (`/static/app.js`, Jinja `{% extends "base.html" %}`) by a unique trailing-path (suffix) match, updating both the `imports` row and the edge. Runs after the whole repo is indexed.
 - `queries.py` — read-side queries backing the tools. `db.py` — schema/WAL. `models.py` — Node/Edge/Import + kind/edge constants. `config.py` — env config.
 
 ## Graph model
@@ -40,11 +40,13 @@ Everything Docker/pytest runs via `wsl -e bash -lc "..."`.
 
 ## Languages indexed
 
-Python and JS/TS (JSX/TSX) get a full symbol + call graph. HTML (`<script>`/`<link>`
-deps), CSS (`@import`), JSON (`package.json` npm deps), YAML (docker-compose
+Python and JS/TS (JSX/TSX) get a full symbol + call graph (incl. nested/IIFE
+functions). HTML/Jinja templates (`<script>`/`<link>` deps incl. absolute
+`/static/…`; `{% extends/include/import/from %}` template lineage; `{% macro %}`
+defs + uses), CSS (`@import`), JSON (`package.json` npm deps), YAML (docker-compose
 services + `depends_on`), and arbitrary config files (grammar-less `Config` node).
 Cross-file references resolve across languages (HTML→JS/CSS, JS→CSS asset import,
-CSS→CSS, service→service).
+CSS→CSS, template→template, template→macro, service→service).
 
 ## Adding a language
 

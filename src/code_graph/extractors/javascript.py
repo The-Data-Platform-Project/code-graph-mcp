@@ -67,6 +67,9 @@ _FUNC_VALUES = frozenset(
     {"arrow_function", "function_expression", "generator_function", "function"}
 )
 _CLASS_DECLS = frozenset({"class_declaration", "abstract_class_declaration"})
+# Anonymous class expressions in expression position: skipped by `scan` (rare;
+# named `const X = class {}` is handled by handle_lexical instead).
+_ANON_CLASS_SCOPES = frozenset({"class", "class_expression"})
 
 
 class JavaScriptExtractor(Extractor):
@@ -174,21 +177,43 @@ class JavaScriptExtractor(Extractor):
                 add_dep(local_name, specifier, None)
             return True
 
-        # ---- calls (iterative, bounded to one scope) ----------------------
-        def scan_calls(root: TSNode, src_qname: str) -> None:
+        # ---- traversal: definitions + calls -------------------------------
+        # Named functions/classes open a new container; anonymous function
+        # scopes (IIFEs, callbacks) are *transparent* — their contents attribute
+        # to the nearest named container. This mirrors the Python walk, so an
+        # IIFE-wrapped module still contributes its functions as real nodes.
+        def walk_statements(block: TSNode, container: str) -> None:
+            for i in range(block.named_child_count):
+                dispatch(block.named_child(i), container)
+
+        def handle_anon_scope(fn: TSNode, container: str) -> None:
+            body = fn.child_by_field_name("body")
+            if body is None:
+                return
+            if body.type == "statement_block":
+                walk_statements(body, container)
+            else:  # concise arrow body: () => expr
+                scan(body, container)
+
+        def scan(root: TSNode, container: str) -> None:
+            """Attribute calls under `root` to `container`, descending through
+            anonymous function scopes so IIFE/callback bodies are not lost."""
             stack = [root]
             while stack:
                 n = stack.pop()
                 t = n.type
-                if t in _NEW_SCOPES:
-                    continue  # its own walk attributes those calls
+                if t in _FUNC_VALUES:  # anonymous function/arrow: transparent
+                    handle_anon_scope(n, container)
+                    continue
+                if t in _ANON_CLASS_SCOPES:  # anonymous class expression: skip
+                    continue
                 if t == "call_expression":
                     fn = n.child_by_field_name("function")
                     if fn is not None and fn.type in ("identifier", "member_expression"):
                         raw = one_line(fn)
                         if raw:
                             edges.append(
-                                Edge(EDGE_CALLS, src_qname, raw, raw, file_path, 0)
+                                Edge(EDGE_CALLS, container, raw, raw, file_path, 0)
                             )
                     elif fn is not None and fn.type == "import":
                         args = n.child_by_field_name("arguments")
@@ -219,7 +244,10 @@ class JavaScriptExtractor(Extractor):
             )
             edges.append(Edge(EDGE_CONTAINS, container, qname, qname, file_path, 1))
             if body is not None:
-                scan_calls(body, qname)
+                if body.type == "statement_block":
+                    walk_statements(body, qname)  # recurse for nested defs + calls
+                else:  # expression-bodied arrow: () => expr
+                    scan(body, qname)
 
         def handle_class(defn: TSNode, container: str) -> None:
             name_node = defn.child_by_field_name("name")
@@ -273,7 +301,7 @@ class JavaScriptExtractor(Extractor):
                 value = decl.child_by_field_name("value")
                 if name_node is None or name_node.type != "identifier":
                     if value is not None:
-                        scan_calls(value, container)
+                        scan(value, container)
                     continue
                 local = text(name_node)
                 if value is None:
@@ -306,7 +334,7 @@ class JavaScriptExtractor(Extractor):
                         walk_class_body(body, qname)
                     handled_any = True
                 else:
-                    scan_calls(value, container)
+                    scan(value, container)
             return handled_any
 
         def dispatch(stmt: TSNode, container: str) -> None:
@@ -328,7 +356,7 @@ class JavaScriptExtractor(Extractor):
                                 val.child_by_field_name("body"), "export default ",
                             )
                         else:
-                            scan_calls(val, container)
+                            scan(val, container)
                 else:
                     dispatch(inner, container)
             elif t in ("function_declaration", "generator_function_declaration"):
@@ -346,7 +374,7 @@ class JavaScriptExtractor(Extractor):
             elif t in ("lexical_declaration", "variable_declaration"):
                 handle_lexical(stmt, container)
             else:
-                scan_calls(stmt, container)
+                scan(stmt, container)
 
         def walk_class_body(body: TSNode, container: str) -> None:
             for member in _named_children(body):
@@ -363,7 +391,7 @@ class JavaScriptExtractor(Extractor):
                 elif member.type in ("field_definition", "public_field_definition"):
                     value = member.child_by_field_name("value")
                     if value is not None and value.type not in _NEW_SCOPES:
-                        scan_calls(value, container)
+                        scan(value, container)
 
         for i in range(tree.root_node.named_child_count):
             dispatch(tree.root_node.named_child(i), module_qname)
