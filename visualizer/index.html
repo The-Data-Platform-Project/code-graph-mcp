@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code Graph</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+  :root {
+    --teal-50: #f0fdfa; --teal-100: #ccfbf1; --teal-200: #99f6e4;
+    --teal-300: #5eead4; --teal-400: #2dd4bf; --teal-500: #14b8a6;
+    --teal-600: #0d9488; --teal-700: #0f766e; --teal-800: #115e59;
+    --teal-900: #134e4a;
+    --white: #ffffff; --gray-50: #f8fafa; --gray-100: #f1f5f4;
+    --gray-200: #e6edec; --gray-300: #cbd5d4; --gray-400: #94a3a2;
+    --gray-500: #64756f; --gray-600: #475752; --gray-700: #334240;
+    --gray-800: #1d2b2a; --gray-900: #0f1a19;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', system-ui, sans-serif;
+    background: var(--white);
+    color: var(--gray-800);
+    overflow: hidden;
+  }
+
+  #app { display: flex; height: 100vh; }
+
+  /* ── Sidebar ── */
+  #sidebar {
+    width: 320px; min-width: 320px;
+    background: var(--white);
+    border-right: 1px solid var(--gray-200);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-header {
+    padding: 24px 24px 0;
+  }
+
+  .logo {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 20px;
+  }
+  .logo-mark {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--teal-400), var(--teal-600));
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(13, 148, 136, 0.25);
+  }
+  .logo-mark svg { width: 20px; height: 20px; }
+  .logo-text {
+    font-size: 20px; font-weight: 700; letter-spacing: -0.3px;
+    color: var(--gray-800);
+  }
+  .logo-text span { color: var(--teal-600); }
+
+  /* Stats row */
+  .stats-row {
+    display: flex; gap: 0; margin-bottom: 20px;
+    border: 1px solid var(--gray-200); border-radius: 12px;
+    overflow: hidden;
+  }
+  .stat-cell {
+    flex: 1; padding: 12px 14px; text-align: center;
+    background: var(--gray-50);
+  }
+  .stat-cell + .stat-cell { border-left: 1px solid var(--gray-200); }
+  .stat-val {
+    font-size: 22px; font-weight: 700; color: var(--teal-700);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .stat-label {
+    font-size: 11px; color: var(--gray-400); text-transform: uppercase;
+    letter-spacing: 0.5px; margin-top: 4px; font-weight: 500;
+  }
+
+  /* Controls */
+  .sidebar-controls {
+    padding: 0 24px;
+    overflow-y: auto; flex: 1;
+    display: flex; flex-direction: column; gap: 18px;
+    padding-bottom: 24px;
+  }
+
+  .control-group label.section-label {
+    display: block;
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.8px; color: var(--gray-400);
+    margin-bottom: 6px;
+  }
+
+  select {
+    width: 100%; padding: 9px 12px; border-radius: 10px;
+    border: 1px solid var(--gray-200); background: var(--gray-50);
+    color: var(--gray-700); font-family: 'DM Sans', sans-serif;
+    font-size: 13px; font-weight: 500; outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%2394a3a2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+  }
+  select:focus { border-color: var(--teal-400); box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1); }
+
+  .search-wrap {
+    position: relative;
+  }
+  .search-wrap svg {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    width: 15px; height: 15px; color: var(--gray-400); pointer-events: none;
+  }
+  input[type=text] {
+    width: 100%; padding: 9px 12px 9px 36px; border-radius: 10px;
+    border: 1px solid var(--gray-200); background: var(--gray-50);
+    color: var(--gray-700); font-family: 'DM Sans', sans-serif;
+    font-size: 13px; font-weight: 400; outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  input[type=text]::placeholder { color: var(--gray-300); }
+  input[type=text]:focus { border-color: var(--teal-400); box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1); }
+
+  /* Checkbox pills */
+  .pill-group {
+    display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .pill {
+    display: flex; align-items: center; gap: 5px;
+    padding: 5px 10px; border-radius: 20px;
+    border: 1px solid var(--gray-200); background: var(--white);
+    font-size: 12px; font-weight: 500; color: var(--gray-600);
+    cursor: pointer; transition: all 0.2s; user-select: none;
+  }
+  .pill:hover { border-color: var(--gray-300); }
+  .pill.active { border-color: var(--teal-300); background: var(--teal-50); color: var(--teal-700); }
+  .pill .swatch {
+    width: 8px; height: 8px; border-radius: 50%;
+  }
+  .pill .line-sw {
+    width: 14px; height: 2.5px; border-radius: 2px;
+  }
+  .pill input { display: none; }
+
+  /* ── Detail panel ── */
+  #detail {
+    display: none; padding: 16px 24px 20px;
+    border-top: 1px solid var(--gray-200);
+    background: var(--gray-50);
+    max-height: 320px; overflow-y: auto;
+  }
+  #detail.active { display: block; }
+  #detail .detail-name {
+    font-size: 15px; font-weight: 700; color: var(--gray-800);
+    margin-bottom: 6px; word-break: break-word;
+  }
+  .kind-pill {
+    display: inline-block; padding: 2px 10px; border-radius: 6px;
+    color: var(--white); font-size: 11px; font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  .detail-repo {
+    display: inline-block; margin-left: 8px;
+    font-size: 12px; color: var(--gray-400);
+  }
+  .detail-path {
+    margin-top: 8px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: var(--gray-500); word-break: break-all;
+  }
+  .detail-sig {
+    margin-top: 10px; padding: 10px 12px; border-radius: 8px;
+    background: var(--white); border: 1px solid var(--gray-200);
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    white-space: pre-wrap; word-break: break-all;
+    color: var(--gray-700);
+  }
+  .detail-qname {
+    margin-top: 8px;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: var(--gray-300);
+  }
+  .conn-section { margin-top: 12px; }
+  .conn-section h4 {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.6px; color: var(--gray-400); margin-bottom: 4px;
+  }
+  .conn-item {
+    font-size: 12px; padding: 4px 0; cursor: pointer;
+    color: var(--teal-600); font-weight: 500;
+    transition: color 0.15s;
+  }
+  .conn-item:hover { color: var(--teal-800); }
+  .conn-arrow { color: var(--gray-300); margin: 0 4px; font-weight: 400; }
+
+  /* ── Canvas area ── */
+  #graph-area {
+    flex: 1; position: relative; overflow: hidden;
+    background: var(--gray-50);
+    /* Subtle dot grid */
+    background-image: radial-gradient(circle, var(--gray-200) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  #graph-canvas { width: 100%; height: 100%; display: block; }
+
+  .empty-state {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    text-align: center; max-width: 420px;
+  }
+  .empty-state .empty-icon {
+    width: 64px; height: 64px; border-radius: 16px; margin: 0 auto 16px;
+    background: linear-gradient(135deg, var(--teal-100), var(--teal-200));
+    display: flex; align-items: center; justify-content: center;
+  }
+  .empty-state h2 {
+    font-size: 18px; font-weight: 600; color: var(--gray-700);
+    margin-bottom: 8px;
+  }
+  .empty-state p { font-size: 14px; line-height: 1.7; color: var(--gray-400); }
+  .empty-state code {
+    background: var(--white); border: 1px solid var(--gray-200);
+    padding: 2px 8px; border-radius: 6px; font-size: 12px;
+    font-family: 'JetBrains Mono', monospace; color: var(--teal-700);
+  }
+
+  /* Tooltip */
+  #tooltip {
+    position: fixed; padding: 10px 14px; border-radius: 10px;
+    background: var(--white); border: 1px solid var(--gray-200);
+    font-size: 12px; pointer-events: none; opacity: 0;
+    transition: opacity .12s; max-width: 340px; z-index: 10;
+    box-shadow: 0 8px 24px rgba(15, 26, 25, 0.08), 0 2px 6px rgba(15, 26, 25, 0.04);
+    font-family: 'DM Sans', sans-serif;
+  }
+  #tooltip strong { font-weight: 600; color: var(--gray-800); }
+  #tooltip .tt-meta { color: var(--gray-400); font-size: 11px; margin-top: 2px; }
+  #tooltip .tt-path {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: var(--teal-600); margin-top: 3px;
+  }
+
+  /* Loading */
+  .loading-overlay {
+    position: absolute; inset: 0; display: flex;
+    align-items: center; justify-content: center;
+    background: var(--gray-50); z-index: 5;
+  }
+  .loading-spinner {
+    width: 32px; height: 32px; border-radius: 50%;
+    border: 3px solid var(--gray-200);
+    border-top-color: var(--teal-500);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    #sidebar { width: 260px; min-width: 260px; }
+    .sidebar-header { padding: 16px 16px 0; }
+    .sidebar-controls { padding: 0 16px; padding-bottom: 16px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <div class="logo-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 3v4m0 10v4M3 12h4m10 0h4"/>
+            <path d="M5.6 5.6l2.85 2.85m7.1 7.1l2.85 2.85M5.6 18.4l2.85-2.85m7.1-7.1l2.85-2.85"/>
+          </svg>
+        </div>
+        <div class="logo-text">Code<span>Graph</span></div>
+      </div>
+      <div class="stats-row" id="stats">
+        <div class="stat-cell"><div class="stat-val">—</div><div class="stat-label">Nodes</div></div>
+        <div class="stat-cell"><div class="stat-val">—</div><div class="stat-label">Edges</div></div>
+        <div class="stat-cell"><div class="stat-val">—</div><div class="stat-label">Files</div></div>
+      </div>
+    </div>
+
+    <div class="sidebar-controls">
+      <div class="control-group">
+        <label class="section-label">Repository</label>
+        <select id="repo-select"><option value="">All repositories</option></select>
+      </div>
+
+      <div class="control-group">
+        <label class="section-label">Search</label>
+        <div class="search-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+          </svg>
+          <input type="text" id="search" placeholder="Find a symbol...">
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="section-label">Node types</label>
+        <div class="pill-group" id="kind-filters"></div>
+      </div>
+
+      <div class="control-group">
+        <label class="section-label">Edges</label>
+        <div class="pill-group" id="edge-filters"></div>
+      </div>
+    </div>
+
+    <div id="detail"></div>
+  </div>
+
+  <div id="graph-area">
+    <div class="loading-overlay" id="loading"><div class="loading-spinner"></div></div>
+    <canvas id="graph-canvas"></canvas>
+  </div>
+</div>
+<div id="tooltip"></div>
+
+<script>
+// ── Palette ──
+const KIND_COLORS = {
+  File:      '#0d9488', // teal-600
+  Class:     '#f59e0b', // amber
+  Function:  '#10b981', // emerald
+  Method:    '#06b6d4', // cyan
+  Interface: '#8b5cf6', // violet
+  Config:    '#94a3a2', // gray
+  Service:   '#ef4444', // red
+};
+const KIND_RADIUS = { File: 7, Class: 9, Function: 5, Method: 4.5, Interface: 8, Config: 6, Service: 8 };
+const EDGE_COLORS = {
+  CONTAINS:   '#cbd5d4',
+  IMPORTS:    '#0d9488',
+  CALLS:      '#10b981',
+  INHERITS:   '#f59e0b',
+  IMPLEMENTS: '#8b5cf6',
+  USES_TYPE:  '#06b6d4',
+};
+const ALL_KINDS = ['File','Class','Function','Method','Interface','Config','Service'];
+const ALL_EDGES = ['IMPORTS','CALLS','INHERITS','IMPLEMENTS','USES_TYPE','CONTAINS'];
+
+let rawData = null, simulation = null;
+let activeKinds = new Set(ALL_KINDS);
+let activeEdges = new Set(['IMPORTS','CALLS','INHERITS','IMPLEMENTS','USES_TYPE']);
+let selectedRepo = '', searchTerm = '', selectedNodeId = null;
+
+// Canvas state
+let canvasTransform = d3.zoomIdentity;
+let currentNodes = [], currentLinks = [];
+let hoveredNode = null, dragNode = null;
+const dpr = window.devicePixelRatio || 1;
+
+// ── UI builders ──
+function buildKindFilters() {
+  const el = document.getElementById('kind-filters');
+  el.innerHTML = ALL_KINDS.map(k =>
+    `<label class="pill active" data-kind="${k}">
+       <input type="checkbox" checked>
+       <span class="swatch" style="background:${KIND_COLORS[k]}"></span>${k}
+     </label>`
+  ).join('');
+  el.querySelectorAll('.pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      const k = pill.dataset.kind;
+      pill.classList.toggle('active');
+      if (pill.classList.contains('active')) activeKinds.add(k);
+      else activeKinds.delete(k);
+      rebuildGraph();
+    });
+  });
+}
+
+function buildEdgeFilters() {
+  const el = document.getElementById('edge-filters');
+  el.innerHTML = ALL_EDGES.map(e =>
+    `<label class="pill ${e !== 'CONTAINS' ? 'active' : ''}" data-edge="${e}">
+       <input type="checkbox" ${e !== 'CONTAINS' ? 'checked' : ''}>
+       <span class="line-sw" style="background:${EDGE_COLORS[e]}"></span>${e}
+     </label>`
+  ).join('');
+  el.querySelectorAll('.pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      const e = pill.dataset.edge;
+      pill.classList.toggle('active');
+      if (pill.classList.contains('active')) activeEdges.add(e);
+      else activeEdges.delete(e);
+      rebuildGraph();
+    });
+  });
+}
+
+function populateRepos(repos) {
+  const sel = document.getElementById('repo-select');
+  repos.forEach(r => {
+    const o = document.createElement('option');
+    o.value = r.name;
+    o.textContent = `${r.name} (${r.node_count} nodes)`;
+    sel.appendChild(o);
+  });
+  // Default to smallest repo by edge count
+  if (repos.length > 0) {
+    const smallest = repos.reduce((a, b) => (a.edge_count < b.edge_count ? a : b));
+    sel.value = smallest.name;
+    selectedRepo = smallest.name;
+  }
+  sel.addEventListener('change', () => { selectedRepo = sel.value; rebuildGraph(); });
+}
+
+function showStats(n, e, f) {
+  const cells = document.querySelectorAll('.stat-val');
+  cells[0].textContent = n.toLocaleString();
+  cells[1].textContent = e.toLocaleString();
+  cells[2].textContent = f.toLocaleString();
+}
+
+let searchTimeout;
+document.getElementById('search').addEventListener('input', e => {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => {
+    searchTerm = e.target.value.toLowerCase();
+    rebuildGraph();
+  }, 200);
+});
+
+// ── Filtering ──
+function filterData() {
+  let nodes = rawData.nodes;
+  if (selectedRepo) nodes = nodes.filter(n => n.repo === selectedRepo);
+  nodes = nodes.filter(n => activeKinds.has(n.kind));
+  if (searchTerm) {
+    nodes = nodes.filter(n =>
+      n.name.toLowerCase().includes(searchTerm) ||
+      n.id.toLowerCase().includes(searchTerm)
+    );
+  }
+  const ids = new Set(nodes.map(n => n.id));
+  const links = rawData.links.filter(l =>
+    activeEdges.has(l.type) && ids.has(l.source) && ids.has(l.target)
+  );
+  return { nodes: nodes.map(n => ({...n})), links: links.map(l => ({...l})) };
+}
+
+// ── Detail ──
+function showDetail(node) {
+  selectedNodeId = node.id;
+  const el = document.getElementById('detail');
+  el.classList.add('active');
+
+  const incoming = rawData.links.filter(l => {
+    const tid = typeof l.target === 'object' ? l.target.id : l.target;
+    return tid === node.id && l.type !== 'CONTAINS';
+  });
+  const outgoing = rawData.links.filter(l => {
+    const sid = typeof l.source === 'object' ? l.source.id : l.source;
+    return sid === node.id && l.type !== 'CONTAINS';
+  });
+
+  el.innerHTML = `
+    <div class="detail-name">${esc(node.name)}</div>
+    <div>
+      <span class="kind-pill" style="background:${KIND_COLORS[node.kind]}">${node.kind}</span>
+      <span class="detail-repo">${esc(node.repo)}</span>
+    </div>
+    <div class="detail-path">${esc(node.file_path)}:${node.start_line}</div>
+    ${node.signature ? `<div class="detail-sig">${esc(node.signature)}</div>` : ''}
+    <div class="detail-qname">${esc(node.id)}</div>
+    ${incoming.length ? `<div class="conn-section"><h4>Called by (${incoming.length})</h4>${
+      incoming.slice(0, 12).map(l => {
+        const sid = typeof l.source === 'object' ? l.source.id : l.source;
+        const sn = rawData.nodes.find(n => n.id === sid);
+        return `<div class="conn-item" data-id="${esc(sid)}"><span class="conn-arrow">←</span> ${esc(sn ? sn.name : sid)}</div>`;
+      }).join('')}${incoming.length > 12 ? `<div style="font-size:11px;color:var(--gray-400);margin-top:2px">+${incoming.length - 12} more</div>` : ''}</div>` : ''}
+    ${outgoing.length ? `<div class="conn-section"><h4>Calls (${outgoing.length})</h4>${
+      outgoing.slice(0, 12).map(l => {
+        const tid = typeof l.target === 'object' ? l.target.id : l.target;
+        const tn = rawData.nodes.find(n => n.id === tid);
+        return `<div class="conn-item" data-id="${esc(tid)}"><span class="conn-arrow">→</span> ${esc(tn ? tn.name : tid)}</div>`;
+      }).join('')}${outgoing.length > 12 ? `<div style="font-size:11px;color:var(--gray-400);margin-top:2px">+${outgoing.length - 12} more</div>` : ''}</div>` : ''}
+  `;
+  el.querySelectorAll('.conn-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const t = rawData.nodes.find(n => n.id === item.dataset.id);
+      if (t) showDetail(t);
+    });
+  });
+}
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Canvas rendering ──
+function setupCanvas() {
+  const canvas = document.getElementById('graph-canvas');
+  const rect = document.getElementById('graph-area').getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+  return canvas;
+}
+
+function drawGraph() {
+  const canvas = document.getElementById('graph-canvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  ctx.scale(dpr, dpr);
+  ctx.translate(canvasTransform.x, canvasTransform.y);
+  ctx.scale(canvasTransform.k, canvasTransform.k);
+
+  // Draw edges
+  for (const l of currentLinks) {
+    const sx = l.source.x, sy = l.source.y, tx = l.target.x, ty = l.target.y;
+    if (sx == null || tx == null) continue;
+    const isCont = l.type === 'CONTAINS';
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(tx, ty);
+    ctx.strokeStyle = EDGE_COLORS[l.type] || '#cbd5d4';
+    ctx.globalAlpha = isCont ? 0.08 : 0.3;
+    ctx.lineWidth = isCont ? 0.5 : 1;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Arrowhead for non-CONTAINS
+    if (!isCont && canvasTransform.k > 0.3) {
+      const angle = Math.atan2(ty - sy, tx - sx);
+      const r = (KIND_RADIUS[l.target.kind] || 5) + 3;
+      const ax = tx - Math.cos(angle) * r;
+      const ay = ty - Math.sin(angle) * r;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(ax - 6*Math.cos(angle - 0.4), ay - 6*Math.sin(angle - 0.4));
+      ctx.lineTo(ax - 6*Math.cos(angle + 0.4), ay - 6*Math.sin(angle + 0.4));
+      ctx.closePath();
+      ctx.fillStyle = EDGE_COLORS[l.type];
+      ctx.globalAlpha = 0.5;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Draw nodes
+  for (const n of currentNodes) {
+    if (n.x == null) continue;
+    const r = KIND_RADIUS[n.kind] || 5;
+    const isSelected = n.id === selectedNodeId;
+    const isHovered = hoveredNode && n.id === hoveredNode.id;
+
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = KIND_COLORS[n.kind] || '#94a3a2';
+    ctx.globalAlpha = isHovered || isSelected ? 1 : 0.85;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    if (isSelected || isHovered) {
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r + 3, 0, Math.PI * 2);
+      ctx.strokeStyle = KIND_COLORS[n.kind] || '#0d9488';
+      ctx.globalAlpha = 0.3;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // Labels only when zoomed in
+    if (canvasTransform.k > 0.8) {
+      ctx.font = `${Math.max(9, 11 / canvasTransform.k)}px 'DM Sans', sans-serif`;
+      ctx.fillStyle = '#475752';
+      ctx.globalAlpha = Math.min(1, (canvasTransform.k - 0.8) * 3);
+      ctx.fillText(n.name, n.x + r + 4, n.y + 3.5);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  ctx.restore();
+}
+
+// ── Simulation + interaction ──
+function rebuildGraph() {
+  if (!rawData) return;
+  if (simulation) simulation.stop();
+
+  const filtered = filterData();
+  currentNodes = filtered.nodes;
+  currentLinks = filtered.links;
+
+  const area = document.getElementById('graph-area');
+  area.querySelector('.empty-state')?.remove();
+
+  if (currentNodes.length === 0) {
+    const div = document.createElement('div');
+    div.className = 'empty-state';
+    div.innerHTML = `
+      <div class="empty-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/><path d="M12 3v4m0 10v4M3 12h4m10 0h4"/>
+        </svg>
+      </div>
+      <h2>No nodes to display</h2>
+      <p>Try adjusting your filters or selecting a different repository.</p>`;
+    area.appendChild(div);
+    const canvas = document.getElementById('graph-canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    return;
+  }
+
+  // Update stats for current filter
+  const edgeCount = currentLinks.filter(l => l.type !== 'CONTAINS').length;
+  const fileCount = new Set(currentNodes.map(n => n.file_path)).size;
+  showStats(currentNodes.length, edgeCount, fileCount);
+
+  const rect = area.getBoundingClientRect();
+  const W = rect.width, H = rect.height;
+
+  simulation = d3.forceSimulation(currentNodes)
+    .force('link', d3.forceLink(currentLinks).id(d => d.id).distance(60).strength(0.3))
+    .force('charge', d3.forceManyBody().strength(-80).distanceMax(300))
+    .force('center', d3.forceCenter(W / 2, H / 2))
+    .force('collision', d3.forceCollide().radius(d => (KIND_RADIUS[d.kind] || 5) + 2))
+    .alphaDecay(0.03)
+    .on('tick', drawGraph);
+}
+
+// Hit test
+function findNodeAt(mx, my) {
+  const x = (mx - canvasTransform.x) / canvasTransform.k;
+  const y = (my - canvasTransform.y) / canvasTransform.k;
+  for (let i = currentNodes.length - 1; i >= 0; i--) {
+    const n = currentNodes[i];
+    const r = (KIND_RADIUS[n.kind] || 5) + 2;
+    if ((n.x - x) ** 2 + (n.y - y) ** 2 < r * r) return n;
+  }
+  return null;
+}
+
+function initCanvasInteraction() {
+  const canvas = document.getElementById('graph-canvas');
+  const tooltip = document.getElementById('tooltip');
+
+  // Zoom
+  const zoom = d3.zoom()
+    .scaleExtent([0.05, 12])
+    .on('zoom', e => {
+      canvasTransform = e.transform;
+      drawGraph();
+    });
+  d3.select(canvas).call(zoom);
+
+  // Hover
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const node = findNodeAt(mx, my);
+
+    if (node !== hoveredNode) {
+      hoveredNode = node;
+      canvas.style.cursor = node ? 'pointer' : 'grab';
+      if (node) {
+        tooltip.style.opacity = 1;
+        tooltip.innerHTML = `<strong>${esc(node.name)}</strong><div class="tt-meta">${node.kind} · ${node.repo}</div><div class="tt-path">${esc(node.file_path)}:${node.start_line}</div>`;
+      } else {
+        tooltip.style.opacity = 0;
+      }
+      drawGraph();
+    }
+    if (hoveredNode) {
+      tooltip.style.left = (e.clientX + 16) + 'px';
+      tooltip.style.top = (e.clientY - 8) + 'px';
+    }
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    hoveredNode = null;
+    tooltip.style.opacity = 0;
+    drawGraph();
+  });
+
+  // Click to select
+  canvas.addEventListener('click', e => {
+    const rect = canvas.getBoundingClientRect();
+    const node = findNodeAt(e.clientX - rect.left, e.clientY - rect.top);
+    if (node) {
+      showDetail(node);
+      drawGraph();
+    }
+  });
+
+  // Drag nodes
+  d3.select(canvas).call(
+    d3.drag()
+      .subject(e => {
+        const rect = canvas.getBoundingClientRect();
+        return findNodeAt(e.x - rect.left, e.y - rect.top);
+      })
+      .on('start', e => {
+        if (!e.active) simulation.alphaTarget(0.3).restart();
+        e.subject.fx = e.subject.x;
+        e.subject.fy = e.subject.y;
+        dragNode = e.subject;
+      })
+      .on('drag', e => {
+        const x = (e.x - canvasTransform.x) / canvasTransform.k;
+        const y = (e.y - canvasTransform.y) / canvasTransform.k;
+        e.subject.fx = x;
+        e.subject.fy = y;
+      })
+      .on('end', e => {
+        if (!e.active) simulation.alphaTarget(0);
+        e.subject.fx = null;
+        e.subject.fy = null;
+        dragNode = null;
+      })
+  );
+
+  // Resize
+  window.addEventListener('resize', () => {
+    setupCanvas();
+    drawGraph();
+  });
+}
+
+// ── Init ──
+async function init() {
+  setupCanvas();
+
+  try {
+    const res = await fetch('graph-data.json?v=' + Date.now());
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    rawData = await res.json();
+  } catch {
+    try {
+      const res = await fetch('/api/graph');
+      if (res.ok) rawData = await res.json();
+    } catch { /* */ }
+  }
+
+  document.getElementById('loading').remove();
+
+  if (!rawData || rawData.nodes.length === 0) {
+    document.getElementById('graph-area').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/><path d="M12 3v4m0 10v4M3 12h4m10 0h4"/>
+          </svg>
+        </div>
+        <h2>No graph data yet</h2>
+        <p>Index a repository, then export:</p>
+        <p style="margin-top:10px"><code>python visualizer/export_graph.py</code></p>
+      </div>`;
+    return;
+  }
+
+  populateRepos(rawData.repos || []);
+  buildKindFilters();
+  buildEdgeFilters();
+  initCanvasInteraction();
+  rebuildGraph();
+}
+
+init();
+</script>
+</body>
+</html>
