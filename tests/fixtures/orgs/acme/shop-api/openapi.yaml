@@ -1,0 +1,12 @@
+openapi: 3.0.3
+info:
+  title: shop-api
+  version: 3.0.2
+paths:
+  /api/orders:
+    get:
+      summary: List orders
+      operationId: listOrders
+    post:
+      summary: Create an order
+      operationId: createOrder

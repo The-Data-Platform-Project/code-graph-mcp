@@ -1,8 +1,9 @@
 # 03 — Implementation Plan
 
 Eight phases, each broken into PR-sized steps. Every step lists the files it touches, the
-tests that gate it, and its exit criteria. **Rule for every phase:** the existing
-57-test suite stays green, and the MCP service keeps working unchanged.
+tests that gate it, and its exit criteria. **Rule for every phase:** the whole test
+suite stays green (57 tests at the Phase 1 baseline, 88 after it), and the MCP
+service keeps working unchanged.
 
 Legend: 🆕 new file · ✏️ modified existing file
 
@@ -11,20 +12,22 @@ remains · assumptions · limitations · migration risks.
 
 ---
 
-## Phase 1 — Assessment & foundations
+## Phase 1 — Assessment & foundations — **DONE**
 
-Status: **assessment complete** ([00-current-state](00-current-state.md)). Remaining
-foundation steps:
+Assessment: [00-current-state](00-current-state.md). Foundation steps as delivered:
 
-| Step | Work | Files | Gate |
+| Step | Work | Files | Status |
 |---|---|---|---|
-| 1.1 | CI: ruff + pytest (unit) on push/PR, Python 3.11, cached venv | 🆕 `.github/workflows/ci.yml` | CI green on `feature/pipeline-overhaul` |
-| 1.2 | Fix stale WSL path; add a pointer to `docs/architecture` | ✏️ `CLAUDE.md` | — |
-| 1.3 | **MCP contract golden tests**: index a fixture repo and snapshot every tool's JSON output, so later changes to the analysis core can't silently alter MCP behavior | 🆕 `tests/test_mcp_contract.py`, 🆕 `tests/golden/*.json` | Goldens committed |
-| 1.4 | Dependency extras: `[platform]` (pydantic, pydantic-settings, httpx, psycopg[binary,pool], structlog, PyYAML, typer, apscheduler), `[api]` (fastapi, uvicorn), `[dev]` (pytest-asyncio, respx, hypothesis). MCP image keeps installing base only. | ✏️ `pyproject.toml`, 🆕 `requirements-platform.lock.txt`, 🆕 `requirements-api.lock.txt` | `docker compose build` unchanged in size (±5 MB) |
-| 1.5 | Fixture organizations (see §Fixtures), materialized into real git repos with scripted history by a session fixture | 🆕 `tests/fixtures/orgs/**`, 🆕 `tests/platform/conftest.py` | Fixture builder test passes |
+| 1.1 | CI: ruff + pytest on push/PR (Python 3.11, pip cache) plus an image-build job. Lint rule set pinned in `pyproject.toml` (`E4,E7,E9,F,I,B,UP009,UP010`) so CI and local agree; five pre-existing violations fixed. `ruff format` deliberately *not* enforced — the codebase is not ruff-format formatted and reformatting it is out of scope. | 🆕 `.github/workflows/ci.yml`, ✏️ `pyproject.toml`, ✏️ `queries.py`, ✏️ `extractors/{python,javascript}.py`, ✏️ `scripts/call_tool.py` | ✅ lint clean |
+| 1.2 | Corrected WSL path, added the lint command, pointed at `docs/architecture/` | ✏️ `CLAUDE.md` | ✅ |
+| 1.3 | MCP contract goldens: a 13-file multi-language fixture repo, all nine tools plus five error paths snapshotted to JSON, volatile fields scrubbed, `UPDATE_GOLDEN=1` to regenerate | 🆕 `tests/test_mcp_contract.py`, 🆕 `tests/fixtures/mcp_contract/**`, 🆕 `tests/golden/*.json` (16) | ✅ 17 tests |
+| 1.4 | Optional extras `[platform]`, `[api]`, `[dev]`; every pin verified resolvable. The MCP image still installs `requirements.lock.txt` only, so it is unchanged. Per-extra lock files come with Phase 2, when something actually installs them. | ✏️ `pyproject.toml` | ✅ |
+| 1.5 | Ten fixture repositories across three orgs + metadata manifest + a builder that materializes them as git repos with scripted commit dates. Planted secrets and the oversized file are generated at build time, never committed. | 🆕 `tests/fixtures/orgs/**`, 🆕 `tests/platform/{conftest,fixture_repos,planted_secrets,test_fixtures}.py` | ✅ 14 tests |
 
-**Exit:** CI in place, goldens protect MCP, fixtures available.
+**Exit:** met. 88 tests pass (57 baseline + 17 contract + 14 fixtures); lint clean.
+
+Carried into Phase 2: per-extra lock files (1.4), and CI must be observed green on
+the first push (it has not run yet — the workflow is committed but untriggered).
 
 ---
 
@@ -173,10 +176,12 @@ Starts only after the Phase 7 exit criteria have held for ≥ 1 week of daily ru
 
 ---
 
-## Fixtures (`tests/fixtures/orgs/`)
+## Fixtures (`tests/fixtures/orgs/`) — built in Phase 1
 
-Directories materialized into git repos with scripted commit history by a session fixture
-(dates controlled via `GIT_AUTHOR_DATE`).
+Working trees plus `manifest.json` (GitHub-shaped metadata + the commit script).
+`tests/platform/fixture_repos.py` materializes them into git repos with fixed authors
+and scripted dates (`GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE`); the session-scoped
+`fixture_orgs` fixture exposes them keyed by full name.
 
 | Org | Repo | Purpose |
 |---|---|---|
@@ -188,8 +193,8 @@ Directories materialized into git repos with scripted commit history by a sessio
 | `globex` | `case-study-retail` | README-driven case-study classification, docs/ADRs |
 | `globex` | `old-prototype` | Stale (last commit 2 years back), no README, archived flag in mocked metadata |
 | `globex` | `mono` | pnpm workspace monorepo with 2 apps + 1 package |
-| — | `secrets-trap` | Planted fake tokens (AWS, GitHub, PEM, `.env` values) → must never persist |
-| — | `broken` | Unparseable files, unsupported languages, oversized file |
+| `sandbox` | `secrets-trap` | Planted fake tokens (AWS, GitHub, Slack, Stripe, JWT, PEM, `.env` values) → must never persist. Assembled from fragments at build time so no literal token is committed. |
+| `sandbox` | `broken` | Unparseable Python, unsupported language (`.zig`), and a 2 MB generated file over the index cap |
 
 GitHub metadata for fixtures is served by a respx mock keyed by fake repository IDs,
 including a renamed repo and a duplicate listing (same ID via org and manifest).

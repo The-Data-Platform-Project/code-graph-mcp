@@ -1,0 +1,12 @@
+name: ci
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+      - run: docker build -t ghcr.io/acme/shop-api:latest .
+      - run: docker push ghcr.io/acme/shop-api:latest

@@ -1,0 +1,16 @@
+[
+  {
+    "in_project": true,
+    "kind": "asset",
+    "local_name": "/static/app.js",
+    "repo": "contract",
+    "target": "web.static.app"
+  },
+  {
+    "in_project": true,
+    "kind": "asset",
+    "local_name": "/static/site.css",
+    "repo": "contract",
+    "target": "web/static/site.css"
+  }
+]

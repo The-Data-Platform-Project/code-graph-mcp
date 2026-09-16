@@ -1,0 +1,5 @@
+image:
+  repository: ghcr.io/acme/shop-api
+  tag: 3.0.2
+env: production
+region: eu-west-1

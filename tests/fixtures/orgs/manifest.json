@@ -1,0 +1,274 @@
+{
+  "comment": [
+    "Metadata for the fixture organizations. The repository directories next to",
+    "this file hold the content; this file holds what GitHub would tell us about",
+    "them plus the commit history each repo is given when materialized.",
+    "Commit `paths` are repo-relative; `*` means 'everything not yet committed'."
+  ],
+  "organizations": [
+    {
+      "login": "acme",
+      "provider_org_id": 9001,
+      "name": "Acme Commerce",
+      "url": "https://github.com/acme"
+    },
+    {
+      "login": "globex",
+      "provider_org_id": 9002,
+      "name": "Globex Data",
+      "url": "https://github.com/globex"
+    },
+    {
+      "login": "sandbox",
+      "provider_org_id": 9003,
+      "name": "Sandbox",
+      "url": "https://github.com/sandbox"
+    }
+  ],
+  "repositories": [
+    {
+      "full_name": "acme/shop-web",
+      "path": "acme/shop-web",
+      "provider_repo_id": 100001,
+      "description": "Customer-facing storefront for the Shop application",
+      "default_branch": "main",
+      "visibility": "public",
+      "primary_language": "TypeScript",
+      "topics": ["react", "storefront", "e-commerce"],
+      "license_spdx": "MIT",
+      "is_archived": false,
+      "is_fork": false,
+      "commits": [
+        {
+          "message": "Initial storefront",
+          "date": "2024-03-01T09:00:00+00:00",
+          "paths": ["package.json", "README.md", "src/api.ts", "Dockerfile"]
+        },
+        {
+          "message": "Add order list view and app metadata",
+          "date": "2026-09-01T16:20:00+00:00",
+          "paths": ["*"]
+        }
+      ]
+    },
+    {
+      "full_name": "acme/shop-api",
+      "path": "acme/shop-api",
+      "provider_repo_id": 100002,
+      "description": "Order service: orders, payments and order events",
+      "default_branch": "main",
+      "visibility": "private",
+      "primary_language": "Python",
+      "topics": ["fastapi", "orders", "e-commerce"],
+      "license_spdx": "Apache-2.0",
+      "is_archived": false,
+      "is_fork": false,
+      "commits": [
+        {
+          "message": "Order endpoints over Postgres",
+          "date": "2024-02-12T11:05:00+00:00",
+          "paths": ["pyproject.toml", "README.md", "app/__init__.py", "app/db.py", "app/main.py"]
+        },
+        {
+          "message": "Capture payments and publish order events",
+          "date": "2025-06-18T08:40:00+00:00",
+          "paths": ["app/payments.py", "app/events.py", "app/cache.py", "tests/test_main.py"]
+        },
+        {
+          "message": "Ship deployment, CI and the published schema",
+          "date": "2026-09-08T13:15:00+00:00",
+          "paths": ["*"]
+        }
+      ]
+    },
+    {
+      "full_name": "acme/shop-infra",
+      "path": "acme/shop-infra",
+      "provider_repo_id": 100003,
+      "description": "Terraform and Helm for the Shop application",
+      "default_branch": "main",
+      "visibility": "private",
+      "primary_language": "HCL",
+      "topics": ["terraform", "helm", "aws"],
+      "license_spdx": "Apache-2.0",
+      "is_archived": false,
+      "is_fork": false,
+      "commits": [
+        {
+          "message": "Provision RDS, S3 and the order-events queue",
+          "date": "2024-04-02T10:00:00+00:00",
+          "paths": ["main.tf", "README.md"]
+        },
+        {
+          "message": "Add the production Helm release",
+          "date": "2026-08-20T09:30:00+00:00",
+          "paths": ["*"]
+        }
+      ]
+    },
+    {
+      "full_name": "acme/common-lib",
+      "path": "acme/common-lib",
+      "provider_repo_id": 100004,
+      "description": "Shared Python utilities used across Acme and Globex services",
+      "default_branch": "main",
+      "visibility": "public",
+      "primary_language": "Python",
+      "topics": ["library", "shared"],
+      "license_spdx": "MIT",
+      "is_archived": false,
+      "is_fork": false,
+      "commits": [
+        {
+          "message": "Shared logging and retry helpers",
+          "date": "2024-01-08T14:45:00+00:00",
+          "paths": ["*"]
+        }
+      ]
+    },
+    {
+      "full_name": "globex/analytics",
+      "path": "globex/analytics",
+      "provider_repo_id": 200001,
+      "description": "Order-events ETL into BigQuery",
+      "default_branch": "main",
+      "visibility": "private",
+      "primary_language": "Python",
+      "topics": ["etl", "bigquery", "analytics"],
+      "license_spdx": "Apache-2.0",
+      "is_archived": false,
+      "is_fork": false,
+      "commits": [
+        {
+          "message": "Consume order events and load BigQuery",
+          "date": "2024-07-01T09:10:00+00:00",
+          "paths": ["*"]
+        }
+      ]
+    },
+    {
+      "full_name": "globex/case-study-retail",
+      "path": "globex/case-study-retail",
+      "provider_repo_id": 200002,
+      "description": "Case study: retail order platform modernization",
+      "default_branch": "main",
+      "visibility": "public",
+      "primary_language": null,
+      "topics": ["case-study", "retail"],
+      "license_spdx": "CC-BY-4.0",
+      "is_archived": false,
+      "is_fork": false,
+      "commits": [
+        {
+          "message": "Write up the retail rollout",
+          "date": "2024-06-20T15:00:00+00:00",
+          "paths": ["*"]
+        }
+      ]
+    },
+    {
+      "full_name": "globex/old-prototype",
+      "path": "globex/old-prototype",
+      "provider_repo_id": 200003,
+      "previous_full_name": "globex/prototype",
+      "description": null,
+      "default_branch": "master",
+      "visibility": "public",
+      "primary_language": "Python",
+      "topics": [],
+      "license_spdx": null,
+      "is_archived": true,
+      "is_fork": false,
+      "commits": [
+        {
+          "message": "Prototype fetcher",
+          "date": "2021-05-04T12:00:00+00:00",
+          "paths": ["*"]
+        }
+      ]
+    },
+    {
+      "full_name": "globex/mono",
+      "path": "globex/mono",
+      "provider_repo_id": 200004,
+      "description": "pnpm workspace with two apps and a shared package",
+      "default_branch": "main",
+      "visibility": "public",
+      "primary_language": "TypeScript",
+      "topics": ["monorepo", "pnpm"],
+      "license_spdx": "MIT",
+      "is_archived": false,
+      "is_fork": false,
+      "commits": [
+        {
+          "message": "Workspace with web, admin and ui",
+          "date": "2025-10-02T10:30:00+00:00",
+          "paths": ["*"]
+        }
+      ]
+    },
+    {
+      "full_name": "sandbox/secrets-trap",
+      "path": null,
+      "provider_repo_id": 300001,
+      "description": "Planted credential shapes; nothing here may ever be persisted",
+      "default_branch": "main",
+      "visibility": "private",
+      "primary_language": "Python",
+      "topics": ["security"],
+      "license_spdx": null,
+      "is_archived": false,
+      "is_fork": false,
+      "generated": "secrets_trap",
+      "commits": [
+        {
+          "message": "Planted credentials",
+          "date": "2026-01-15T10:00:00+00:00",
+          "paths": ["*"]
+        }
+      ]
+    },
+    {
+      "full_name": "sandbox/broken",
+      "path": "broken",
+      "provider_repo_id": 300002,
+      "description": "Hostile inputs: unparseable, unsupported and oversized files",
+      "default_branch": "main",
+      "visibility": "public",
+      "primary_language": "Python",
+      "topics": [],
+      "license_spdx": null,
+      "is_archived": false,
+      "is_fork": false,
+      "generated": "oversized",
+      "commits": [
+        {
+          "message": "Hostile inputs",
+          "date": "2026-02-02T10:00:00+00:00",
+          "paths": ["*"]
+        }
+      ]
+    }
+  ],
+  "duplicate_listings": [
+    {
+      "full_name": "acme/shop-api-mirror",
+      "provider_repo_id": 100002,
+      "note": "Same GitHub repository id as acme/shop-api; discovery must collapse these into one repository."
+    }
+  ],
+  "applications": [
+    {
+      "name": "shop",
+      "repositories": ["acme/shop-web", "acme/shop-api", "acme/shop-infra"],
+      "declared_by": "codegraph.yaml"
+    }
+  ],
+  "use_cases": [
+    {
+      "name": "e-commerce",
+      "repositories": ["acme/shop-web", "acme/shop-api"],
+      "case_study_repositories": ["globex/case-study-retail"]
+    }
+  ]
+}

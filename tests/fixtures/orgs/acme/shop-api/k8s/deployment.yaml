@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shop-api
+  namespace: shop-prod
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: shop-api
+          image: ghcr.io/acme/shop-api:3.0.2
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: shop-api-db
+                  key: url
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shop-api
+  namespace: shop-prod
+spec:
+  ports:
+    - port: 80
+      targetPort: 8000

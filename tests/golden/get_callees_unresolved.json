@@ -1,0 +1,11 @@
+[
+  {
+    "callee": "does_not_exist",
+    "file_path": null,
+    "kind": null,
+    "repo": "contract",
+    "resolved": false,
+    "signature": null,
+    "start_line": null
+  }
+]

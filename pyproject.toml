@@ -22,6 +22,36 @@ dependencies = [
     "tree-sitter-yaml==0.7.2",
 ]
 
+[project.optional-dependencies]
+# The MCP service needs NONE of these: the container installs
+# requirements.lock.txt only, so it stays small and egress-free.
+#
+#   platform - ingestion pipeline worker (GitHub, git, Supabase/Postgres)
+#   api      - REST API the graph UI reads
+#   dev      - lint + test tooling
+platform = [
+    "httpx==0.28.1",
+    "psycopg[binary,pool]==3.2.10",
+    "pydantic==2.13.4",
+    "pydantic-settings==2.14.2",
+    "PyYAML==6.0.3",
+    "structlog==25.4.0",
+    "typer==0.19.2",
+    "APScheduler==3.11.0",
+]
+api = [
+    "fastapi==0.120.4",
+    "uvicorn==0.51.0",
+    "PyJWT==2.13.0",
+]
+dev = [
+    "pytest==8.4.2",
+    "pytest-asyncio==1.2.0",
+    "respx==0.22.0",
+    "hypothesis==6.140.3",
+    "ruff==0.16.2",
+]
+
 [project.scripts]
 code-graph-mcp = "code_graph.server:main"
 
@@ -31,7 +61,23 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Fixture repositories contain their own test files; they are sample code to
+# be indexed, not tests of this project. (Keeps pytest defaults too.)
+norecursedirs = ["tests/fixtures", ".*", "build", "dist", "*.egg", "node_modules"]
+markers = [
+    "db: requires a live Postgres/Supabase instance (skipped unless CODEGRAPH_TEST_DSN is set)",
+]
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Fixture repositories are deliberately odd sample code (unsorted imports,
+# syntax errors, planted-secret shapes). They are data, not source.
+extend-exclude = ["tests/fixtures"]
+
+# Pinned rule set so `ruff check` means the same thing locally and in CI
+# regardless of which ruff version is installed. Deliberately narrow: these are
+# correctness and import-hygiene rules, not style opinions - the codebase is not
+# ruff-format formatted and reformatting it is out of scope.
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP009", "UP010"]

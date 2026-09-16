@@ -1,0 +1,20 @@
+[
+  {
+    "file_path": "pkg/utils.py",
+    "kind": "Method",
+    "name": "greet",
+    "qualified_name": "pkg.utils.Base.greet",
+    "repo": "contract",
+    "signature": "def greet(self)",
+    "start_line": 9
+  },
+  {
+    "file_path": "pkg/core.py",
+    "kind": "Method",
+    "name": "greet_twice",
+    "qualified_name": "pkg.core.Widget.greet_twice",
+    "repo": "contract",
+    "signature": "def greet_twice(self)",
+    "start_line": 11
+  }
+]

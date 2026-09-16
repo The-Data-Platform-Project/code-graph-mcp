@@ -41,7 +41,7 @@ _BUILTIN_TYPES = frozenset(
     {
         "str", "int", "float", "bool", "bytes", "bytearray", "complex",
         "list", "dict", "tuple", "set", "frozenset", "object", "type",
-        "None", "Any", "None", "memoryview", "range", "slice",
+        "None", "Any", "memoryview", "range", "slice",
     }
 )
 

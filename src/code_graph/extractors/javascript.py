@@ -28,8 +28,8 @@ from tree_sitter import Tree
 from ..models import (
     EDGE_CALLS,
     EDGE_CONTAINS,
-    EDGE_IMPORTS,
     EDGE_IMPLEMENTS,
+    EDGE_IMPORTS,
     EDGE_INHERITS,
     KIND_CLASS,
     KIND_FILE,

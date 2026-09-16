@@ -1,0 +1,5 @@
+{
+  "name": "@globex/web",
+  "version": "1.0.0",
+  "dependencies": { "@globex/ui": "workspace:*" }
+}

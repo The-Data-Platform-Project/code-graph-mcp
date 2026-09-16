@@ -1,0 +1,11 @@
+[
+  {
+    "callee": "pkg.utils.helper",
+    "file_path": "pkg/utils.py",
+    "kind": "Function",
+    "repo": "contract",
+    "resolved": true,
+    "signature": "def helper(x)",
+    "start_line": 4
+  }
+]

@@ -1,0 +1,29 @@
+{
+  "depth": 4,
+  "direction": "callees",
+  "nodes_visited": 4,
+  "repo": null,
+  "root": "app.main",
+  "tree": {
+    "children": [
+      {
+        "children": [
+          {
+            "qualified_name": "pkg.core.Widget"
+          },
+          {
+            "children": [
+              {
+                "qualified_name": "pkg.utils.helper"
+              }
+            ],
+            "qualified_name": "pkg.core.Widget.run"
+          }
+        ],
+        "qualified_name": "pkg.core.build"
+      }
+    ],
+    "qualified_name": "app.main"
+  },
+  "truncated": false
+}

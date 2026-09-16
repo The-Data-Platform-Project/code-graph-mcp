@@ -22,8 +22,8 @@ def _parse_args(pairs: list[str]) -> dict:
         args[key] = int(value) if key in _INT_KEYS else value
     return args
 
-from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
+from mcp import ClientSession  # noqa: E402
+from mcp.client.streamable_http import streamablehttp_client  # noqa: E402
 
 URL = "http://127.0.0.1:8765/mcp"
 

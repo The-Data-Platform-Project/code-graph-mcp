@@ -1,0 +1,64 @@
+# CI gate for the analysis core, the MCP contract and the container build.
+#
+# The test job runs on Linux so `tests/test_memory.py` (which needs `resource`)
+# actually executes its peak-RSS ceiling assertion rather than skipping.
+name: CI
+
+on:
+  push:
+    branches: ["main", "feature/**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  RUFF_VERSION: "0.16.2"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install "ruff==${RUFF_VERSION}"
+      # Rule set is pinned in pyproject.toml [tool.ruff.lint], so this means
+      # the same thing here as it does locally.
+      - run: ruff check src tests scripts
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements.lock.txt
+      - name: Install pinned runtime + test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.lock.txt
+          pip install --no-deps -e .
+          # Keep in sync with the [dev] extra in pyproject.toml. Installed
+          # separately so the lock file stays the single source of runtime pins.
+          pip install pytest==8.4.2
+      - name: Run tests
+        run: pytest -q
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the MCP image
+        run: docker build -t code-graph-mcp:ci .
+      - name: Report image size (guard against runaway growth)
+        run: |
+          bytes=$(docker image inspect code-graph-mcp:ci --format '{{.Size}}')
+          echo "image size: $((bytes / 1024 / 1024)) MB"
+          test "$bytes" -lt 629145600   # 600 MB

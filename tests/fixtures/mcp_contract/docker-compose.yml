@@ -1,0 +1,7 @@
+services:
+  web:
+    image: nginx:1.27
+    depends_on:
+      - cache
+  cache:
+    image: redis:7

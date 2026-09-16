@@ -1,0 +1,11 @@
+{
+  "code": "    def run(self):\n        return helper(self.n)",
+  "end_line": 9,
+  "file_path": "pkg/core.py",
+  "found": true,
+  "kind": "Method",
+  "qualified_name": "pkg.core.Widget.run",
+  "repo": "contract",
+  "signature": "def run(self)",
+  "start_line": 8
+}

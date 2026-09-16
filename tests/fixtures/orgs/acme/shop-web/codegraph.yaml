@@ -1,0 +1,4 @@
+application: shop
+layer: product
+use_cases:
+  - e-commerce

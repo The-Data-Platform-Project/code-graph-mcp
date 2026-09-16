@@ -1,0 +1,6 @@
+application: shop
+layer: api
+use_cases:
+  - e-commerce
+owners:
+  - team: payments

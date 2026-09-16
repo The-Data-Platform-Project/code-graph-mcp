@@ -8,7 +8,6 @@ repo is given they match across all indexed repos (results carry their repo).
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 from typing import Any, Optional
 
 from .config import Config

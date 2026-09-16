@@ -296,8 +296,14 @@ python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.lock.txt
 pip install -e .
 
-pytest                          # unit + integration + memory tests
+pytest                          # unit + integration + contract + memory tests
+ruff check src tests scripts    # lint (same rule set CI runs)
 python scripts/memory_check.py  # peak-RSS gate against a real repo
+
+# The MCP tools are covered by golden contract tests: every tool's JSON output
+# for a fixed fixture repo is snapshotted under tests/golden/. If you change the
+# analysis core deliberately, review the diff and regenerate:
+UPDATE_GOLDEN=1 pytest tests/test_mcp_contract.py
 
 # Drive the live server like Claude Code would:
 python scripts/mcp_smoke.py                       # full end-to-end walkthrough

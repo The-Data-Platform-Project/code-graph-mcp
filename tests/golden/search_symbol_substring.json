@@ -1,0 +1,11 @@
+[
+  {
+    "file_path": "pkg/core.py",
+    "kind": "Method",
+    "name": "run",
+    "qualified_name": "pkg.core.Widget.run",
+    "repo": "contract",
+    "signature": "def run(self)",
+    "start_line": 8
+  }
+]

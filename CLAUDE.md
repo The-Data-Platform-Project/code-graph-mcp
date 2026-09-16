@@ -1,6 +1,9 @@
 # CLAUDE.md
 
-Project context for Claude Code. See [README.md](README.md) for the full write-up.
+Project context for Claude Code. See [README.md](README.md) for the full write-up,
+and [docs/architecture/](docs/architecture/) for the repository-intelligence
+platform being built on top of this core (assessment, target architecture, data
+model, phased plan).
 
 ## What this is
 
@@ -15,8 +18,12 @@ chains. No network egress; loopback-only HTTP; hard 500 MiB container cap.
 Docker is **not** on the Windows host — it runs inside WSL2 (Ubuntu, `ismail`).
 Everything Docker/pytest runs via `wsl -e bash -lc "..."`.
 
-- Project path in WSL: `/mnt/f/Code Graph/code-graph-mcp` (F: → `/mnt/f`).
-- Dev venv (deps + pytest): `~/cgvenv`. Run tests: `cd '/mnt/f/Code Graph/code-graph-mcp' && ~/cgvenv/bin/pytest`.
+- Project path in WSL: `/mnt/f/The Data Platform Project/Code Graph/code-graph-mcp`
+  (F: → `/mnt/f`). Quote it: the path contains spaces.
+- Dev venv (deps + pytest): `~/cgvenv`. Run tests:
+  `cd '/mnt/f/The Data Platform Project/Code Graph/code-graph-mcp' && ~/cgvenv/bin/pytest`.
+- Lint: `~/cgvenv/bin/python -m ruff check src tests scripts` (rule set pinned in
+  `pyproject.toml`; CI runs the same command).
 - Service: `docker compose up -d`; endpoint `http://127.0.0.1:8765/mcp` (reachable from Windows via WSL localhost forwarding). `.mcp.json` wires it to Claude Code.
 - `.env` sets `REPOS_HOST_PATH=/mnt/f`, so the whole drive mounts read-only at `/workspaces`; repos are indexed by path relative to `/mnt/f` (e.g. `index_repository("data-platform", "DataPlatform/data-platform")`).
 - The graph persists in host `./data/graph.db` (bind mount) across rebuilds.

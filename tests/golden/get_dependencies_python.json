@@ -1,0 +1,23 @@
+[
+  {
+    "in_project": true,
+    "kind": "symbol",
+    "local_name": "Widget",
+    "repo": "contract",
+    "target": "pkg.core.Widget"
+  },
+  {
+    "in_project": true,
+    "kind": "symbol",
+    "local_name": "build",
+    "repo": "contract",
+    "target": "pkg.core.build"
+  },
+  {
+    "in_project": false,
+    "kind": "symbol",
+    "local_name": "pkg",
+    "repo": "contract",
+    "target": "pkg.core.pkg.core"
+  }
+]

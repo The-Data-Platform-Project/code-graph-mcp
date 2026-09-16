@@ -1,0 +1,4 @@
+apiVersion: v2
+name: shop
+version: 1.3.0
+description: Shop application chart
