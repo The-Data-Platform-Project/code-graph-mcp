@@ -1,0 +1,12 @@
+# The service runs on Linux (WSL/Docker); keep the repository LF-normalized.
+* text=auto
+
+# Test data must be byte-stable across platforms: the golden files are compared
+# verbatim, and the fixture repositories are hashed and committed by the
+# fixture builder.
+tests/golden/** text eol=lf
+tests/fixtures/** text eol=lf
+
+# Shell and Dockerfiles break with CRLF.
+*.sh text eol=lf
+Dockerfile text eol=lf
