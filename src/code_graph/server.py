@@ -16,7 +16,7 @@ from typing import Any, Optional
 
 from mcp.server.fastmcp import FastMCP
 
-from . import db, queries
+from . import db, queries, web
 from .config import Config
 from .indexer import Indexer
 from .util import safe_join
@@ -203,6 +203,16 @@ def get_code_snippet(qualified_name: str, repo: Optional[str] = None) -> dict[st
         return queries.get_code_snippet(con, _CONFIG, qualified_name, repo)
     finally:
         con.close()
+
+
+# --- Visualizer HTTP routes ------------------------------------------------
+# Mounted on the same Starlette app as the MCP endpoint, so the graph UI at `/`
+# and the preview API at `/api/*` share this service's loopback-only binding
+# and its `safe_join` confinement. See web.py for the same-origin rationale.
+for _spec in web.route_specs(_CONFIG, _conn):
+    mcp.custom_route(_spec.path, methods=_spec.methods, name=_spec.name)(
+        _spec.endpoint
+    )
 
 
 def _result_dict(result) -> dict[str, Any]:

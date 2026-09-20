@@ -264,6 +264,200 @@
     .sidebar-header { padding: 16px 16px 0; }
     .sidebar-controls { padding: 0 16px; padding-bottom: 16px; }
   }
+
+  /* ── Preview panel ── */
+  #preview {
+    display: none; position: relative;
+    width: 560px; min-width: 320px; max-width: 70vw;
+    background: var(--white);
+    border-left: 1px solid var(--gray-200);
+    flex-direction: column; overflow: hidden;
+  }
+  #preview.open { display: flex; }
+  .preview-resizer {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
+    cursor: col-resize; z-index: 2;
+  }
+  .preview-resizer:hover { background: var(--teal-100); }
+
+  .preview-head {
+    padding: 16px 18px 0; border-bottom: 1px solid var(--gray-200);
+    background: var(--white);
+  }
+  .preview-title-row { display: flex; align-items: flex-start; gap: 10px; }
+  .preview-title {
+    flex: 1; font-size: 15px; font-weight: 700; color: var(--gray-800);
+    word-break: break-word; line-height: 1.35;
+  }
+  .icon-btn {
+    border: 1px solid var(--gray-200); background: var(--white);
+    color: var(--gray-500); border-radius: 8px; cursor: pointer;
+    width: 26px; height: 26px; font-size: 13px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; flex: none;
+  }
+  .icon-btn:hover { border-color: var(--gray-300); color: var(--gray-700); }
+  .preview-sub {
+    margin-top: 6px; font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--gray-500); word-break: break-all;
+  }
+  .preview-tabs { display: flex; gap: 2px; margin-top: 12px; }
+  .preview-tab {
+    padding: 7px 12px; font-size: 12px; font-weight: 600;
+    color: var(--gray-400); cursor: pointer; border: none;
+    background: none; font-family: 'DM Sans', sans-serif;
+    border-bottom: 2px solid transparent; transition: all 0.15s;
+  }
+  .preview-tab:hover { color: var(--gray-600); }
+  .preview-tab.active { color: var(--teal-700); border-bottom-color: var(--teal-500); }
+  .preview-tab .count {
+    font-weight: 500; color: var(--gray-300); margin-left: 3px;
+  }
+
+  .preview-body { flex: 1; overflow: auto; background: var(--gray-50); }
+  .preview-note {
+    padding: 8px 18px; font-size: 11px; color: var(--gray-500);
+    background: var(--teal-50); border-bottom: 1px solid var(--teal-100);
+  }
+  .preview-empty {
+    padding: 40px 24px; text-align: center; color: var(--gray-400);
+    font-size: 13px; line-height: 1.7;
+  }
+  .preview-empty code {
+    background: var(--white); border: 1px solid var(--gray-200);
+    padding: 2px 6px; border-radius: 5px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: var(--teal-700);
+  }
+
+  /* Code view */
+  .code-view {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    line-height: 1.6; background: var(--white); tab-size: 4;
+  }
+  .code-line { display: flex; white-space: pre; }
+  .code-line.hl { background: var(--teal-50); }
+  .code-line.hl .ln { color: var(--teal-600); background: var(--teal-100); }
+  .code-line .ln {
+    flex: none; width: 52px; padding: 0 10px 0 0; text-align: right;
+    color: var(--gray-300); background: var(--gray-50);
+    border-right: 1px solid var(--gray-200); user-select: none;
+    position: sticky; left: 0;
+  }
+  .code-line .lc { padding: 0 16px 0 12px; flex: 1; }
+
+  .tok-comment { color: var(--gray-400); font-style: italic; }
+  .tok-string  { color: #0f766e; }
+  .tok-keyword { color: #7c3aed; font-weight: 500; }
+  .tok-number  { color: #b45309; }
+  .tok-def     { color: #0369a1; font-weight: 600; }
+
+  /* Markdown view */
+  .md-view {
+    padding: 22px 26px 60px; background: var(--white);
+    font-size: 14px; line-height: 1.75; color: var(--gray-700);
+  }
+  .md-view h1, .md-view h2, .md-view h3, .md-view h4 {
+    color: var(--gray-800); font-weight: 700; line-height: 1.3;
+    margin: 26px 0 10px;
+  }
+  .md-view h1 { font-size: 24px; margin-top: 0; }
+  .md-view h2 {
+    font-size: 19px; padding-bottom: 6px;
+    border-bottom: 1px solid var(--gray-200);
+  }
+  .md-view h3 { font-size: 16px; }
+  .md-view h4 { font-size: 14px; color: var(--gray-600); }
+  .md-view p { margin: 10px 0; }
+  .md-view ul, .md-view ol { margin: 10px 0 10px 22px; }
+  .md-view li { margin: 4px 0; }
+  .md-view a { color: var(--teal-600); text-decoration: none; }
+  .md-view a:hover { text-decoration: underline; }
+  .md-view a.md-rel { color: var(--gray-500); cursor: default; }
+  .md-view code {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    background: var(--gray-100); padding: 1.5px 5px; border-radius: 5px;
+    color: var(--teal-800);
+  }
+  .md-view pre {
+    background: var(--gray-50); border: 1px solid var(--gray-200);
+    border-radius: 10px; padding: 12px 14px; overflow-x: auto; margin: 12px 0;
+  }
+  .md-view pre code { background: none; padding: 0; color: var(--gray-700); }
+  .md-view blockquote {
+    border-left: 3px solid var(--teal-200); padding-left: 14px;
+    margin: 12px 0; color: var(--gray-500);
+  }
+  .md-view hr { border: none; border-top: 1px solid var(--gray-200); margin: 22px 0; }
+  .md-view table { border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+  .md-view th, .md-view td {
+    border: 1px solid var(--gray-200); padding: 6px 12px; text-align: left;
+  }
+  .md-view th { background: var(--gray-50); font-weight: 600; }
+  .md-view img { max-width: 100%; }
+
+  /* Connections view */
+  .conn-view { padding: 6px 0 40px; }
+  .conn-group { border-bottom: 1px solid var(--gray-200); }
+  .conn-group > h4 {
+    padding: 12px 18px 6px; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.7px; color: var(--gray-400);
+  }
+  .conn-row {
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 7px 18px; border-top: 1px solid var(--gray-100);
+    background: var(--white);
+  }
+  .conn-row.clickable { cursor: pointer; }
+  .conn-row.clickable:hover { background: var(--teal-50); }
+  .conn-row .cr-name {
+    font-size: 13px; font-weight: 600; color: var(--gray-700);
+    word-break: break-word;
+  }
+  .conn-row.clickable .cr-name { color: var(--teal-700); }
+  .conn-row .cr-kind {
+    font-size: 9px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; padding: 2px 6px; border-radius: 4px;
+    color: var(--white); flex: none;
+  }
+  .conn-row .cr-path {
+    margin-left: auto; font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; color: var(--gray-400); text-align: right;
+    word-break: break-all; max-width: 55%;
+  }
+  .conn-row .cr-unresolved {
+    font-size: 10px; color: var(--gray-400); font-style: italic;
+  }
+  .conn-empty { padding: 10px 18px 14px; font-size: 12px; color: var(--gray-400); }
+
+  /* Preview button next to the repo select */
+  .readme-btn {
+    margin-top: 8px; width: 100%; padding: 8px 12px; border-radius: 10px;
+    border: 1px solid var(--gray-200); background: var(--white);
+    color: var(--gray-600); font-family: 'DM Sans', sans-serif;
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    transition: all 0.15s;
+  }
+  .readme-btn:hover:not(:disabled) {
+    border-color: var(--teal-300); background: var(--teal-50); color: var(--teal-700);
+  }
+  .readme-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .readme-btn svg { width: 13px; height: 13px; }
+
+  .detail-actions { display: flex; gap: 6px; margin-top: 10px; }
+  .detail-btn {
+    flex: 1; padding: 7px 10px; border-radius: 8px;
+    border: 1px solid var(--teal-200); background: var(--teal-50);
+    color: var(--teal-700); font-family: 'DM Sans', sans-serif;
+    font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+  }
+  .detail-btn:hover { background: var(--teal-100); border-color: var(--teal-300); }
+
+  @media (max-width: 1100px) {
+    #preview { position: absolute; right: 0; top: 0; bottom: 0; z-index: 20;
+               box-shadow: -8px 0 24px rgba(15, 26, 25, 0.10); }
+  }
 </style>
 </head>
 <body>
@@ -291,6 +485,13 @@
       <div class="control-group">
         <label class="section-label">Repository</label>
         <select id="repo-select"><option value="">All repositories</option></select>
+        <button class="readme-btn" id="readme-btn" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          </svg>
+          <span id="readme-btn-label">Preview README</span>
+        </button>
       </div>
 
       <div class="control-group">
@@ -321,6 +522,19 @@
     <div class="loading-overlay" id="loading"><div class="loading-spinner"></div></div>
     <canvas id="graph-canvas"></canvas>
   </div>
+
+  <aside id="preview">
+    <div class="preview-resizer" id="preview-resizer"></div>
+    <header class="preview-head">
+      <div class="preview-title-row">
+        <div class="preview-title" id="preview-title">Preview</div>
+        <button class="icon-btn" id="preview-close" title="Close preview (Esc)">&#10005;</button>
+      </div>
+      <div class="preview-sub" id="preview-sub"></div>
+      <div class="preview-tabs" id="preview-tabs"></div>
+    </header>
+    <div class="preview-body" id="preview-body"></div>
+  </aside>
 </div>
 <div id="tooltip"></div>
 
@@ -411,7 +625,29 @@ function populateRepos(repos) {
     sel.value = smallest.name;
     selectedRepo = smallest.name;
   }
-  sel.addEventListener('change', () => { selectedRepo = sel.value; rebuildGraph(); });
+  updateReadmeButton();
+  sel.addEventListener('change', () => {
+    selectedRepo = sel.value;
+    rebuildGraph();
+    updateReadmeButton();
+    // Selecting a repo shows what it is: its README, straight away.
+    if (selectedRepo) previewReadme(selectedRepo);
+    else closePanel();
+  });
+}
+
+function updateReadmeButton() {
+  const btn = document.getElementById('readme-btn');
+  const label = document.getElementById('readme-btn-label');
+  if (!apiReachable) {
+    btn.disabled = true;
+    label.textContent = 'Previews need the server';
+    btn.title = 'Open http://127.0.0.1:8765/ to preview README and source files';
+    return;
+  }
+  btn.disabled = !selectedRepo;
+  label.textContent = 'Preview README';
+  btn.title = selectedRepo ? `Show ${selectedRepo}'s README` : 'Select a repository first';
 }
 
 function showStats(n, e, f) {
@@ -472,6 +708,10 @@ function showDetail(node) {
     <div class="detail-path">${esc(node.file_path)}:${node.start_line}</div>
     ${node.signature ? `<div class="detail-sig">${esc(node.signature)}</div>` : ''}
     <div class="detail-qname">${esc(node.id)}</div>
+    ${apiReachable ? `<div class="detail-actions">
+      <button class="detail-btn" data-act="source">${isFileKind(node.kind) ? 'Preview file' : 'Preview code'}</button>
+      <button class="detail-btn" data-act="connections">Connections</button>
+    </div>` : ''}
     ${incoming.length ? `<div class="conn-section"><h4>Called by (${incoming.length})</h4>${
       incoming.slice(0, 12).map(l => {
         const sid = typeof l.source === 'object' ? l.source.id : l.source;
@@ -491,9 +731,509 @@ function showDetail(node) {
       if (t) showDetail(t);
     });
   });
+  el.querySelectorAll('.detail-btn').forEach(btn => {
+    btn.addEventListener('click', () =>
+      previewNode(node, btn.dataset.act === 'connections' ? 'connections' : undefined));
+  });
 }
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Preview panel ──────────────────────────────────────────────────────────
+// The graph payload carries structure only — never source text — so previews
+// are fetched on demand from the server, which reads each file fresh from disk
+// under the same /workspaces confinement the MCP tools use. Opening this page
+// straight off disk (file://) still gives you the graph, just no previews.
+
+const SERVED = location.protocol === 'http:' || location.protocol === 'https:';
+let apiReachable = SERVED;
+
+let preview = { kind: null, tab: null, repo: null, qname: null, data: null };
+
+async function apiGet(path) {
+  const res = await fetch(path, { headers: { 'Accept': 'application/json' } });
+  let data = null;
+  try { data = await res.json(); } catch { /* a static server's 404 page */ }
+  if (!data) throw new Error(`HTTP ${res.status}`);
+  return data;
+}
+
+function panelEls() {
+  return {
+    panel: document.getElementById('preview'),
+    title: document.getElementById('preview-title'),
+    sub:   document.getElementById('preview-sub'),
+    tabs:  document.getElementById('preview-tabs'),
+    body:  document.getElementById('preview-body'),
+  };
+}
+
+function openPanel() {
+  document.getElementById('preview').classList.add('open');
+  setupCanvas();
+  drawGraph();
+}
+
+function closePanel() {
+  document.getElementById('preview').classList.remove('open');
+  preview = { kind: null, tab: null, repo: null, qname: null, data: null };
+  setupCanvas();
+  drawGraph();
+}
+
+function panelLoading(title, sub) {
+  const el = panelEls();
+  el.title.textContent = title;
+  el.sub.textContent = sub || '';
+  el.tabs.innerHTML = '';
+  el.body.innerHTML = '<div class="preview-empty"><div class="loading-spinner" style="margin:0 auto"></div></div>';
+}
+
+function panelMessage(html) {
+  panelEls().body.innerHTML = `<div class="preview-empty">${html}</div>`;
+}
+
+function noServerMessage(what) {
+  return `<p>${esc(what)} needs the running service to read files from disk.</p>
+     <p style="margin-top:10px">Open the visualizer at <code>http://127.0.0.1:8765/</code>
+     instead of loading this file directly.</p>`;
+}
+
+// ── README preview ──
+async function previewReadme(repoName) {
+  if (!repoName) return;
+  preview = { kind: 'readme', tab: 'readme', repo: repoName, qname: null, data: null };
+  openPanel();
+  panelLoading(repoName, 'README');
+  if (!apiReachable) { panelMessage(noServerMessage('Previewing a README')); return; }
+
+  try {
+    const data = await apiGet(`/api/readme?repo=${encodeURIComponent(repoName)}`);
+    if (preview.repo !== repoName || preview.kind !== 'readme') return;  // superseded
+    preview.data = data;
+    renderReadme();
+  } catch (err) {
+    panelMessage(`<p>Could not load the README.</p><p style="margin-top:8px"><code>${esc(err.message)}</code></p>`);
+  }
+}
+
+function renderReadme() {
+  const el = panelEls();
+  const d = preview.data;
+  el.title.textContent = preview.repo;
+  if (!d.found) {
+    el.sub.textContent = 'README';
+    el.tabs.innerHTML = '';
+    panelMessage(`<p>${esc(d.error || 'No README found.')}</p>`);
+    return;
+  }
+  el.sub.textContent = d.file_path;
+  el.tabs.innerHTML = '<button class="preview-tab active">README</button>';
+  const note = d.truncated
+    ? `<div class="preview-note">Showing the first ${Math.round(d.content.length / 1024)} KB of a larger file.</div>`
+    : '';
+  const isMarkdown = d.format === '.md' || d.format === '.markdown';
+  const body = isMarkdown
+    ? `<div class="md-view">${renderMarkdown(d.content)}</div>`
+    : `<div class="code-view">${codeBlock(d.content, '', 1, 0, -1)}</div>`;
+  el.body.innerHTML = note + body;
+  el.body.scrollTop = 0;
+}
+
+// ── Node preview ──
+async function previewNode(node, wantTab) {
+  const repoName = node.repo, qname = node.id || node.qualified_name;
+  preview = { kind: 'node', tab: null, repo: repoName, qname, data: null };
+  openPanel();
+  panelLoading(node.name || qname, node.file_path || '');
+  if (!apiReachable) { panelMessage(noServerMessage('Previewing source')); return; }
+
+  try {
+    const data = await apiGet(
+      `/api/node?repo=${encodeURIComponent(repoName)}&qname=${encodeURIComponent(qname)}`);
+    if (preview.qname !== qname) return;  // a later click won the race
+    preview.data = data;
+    preview.tab = wantTab
+      || (data.found && !isFileKind(data.node.kind) ? 'symbol' : 'file');
+    renderNode();
+  } catch (err) {
+    panelMessage(`<p>Could not load this node.</p><p style="margin-top:8px"><code>${esc(err.message)}</code></p>`);
+  }
+}
+
+function loadNodeByName(repoName, qname) {
+  const known = rawData.nodes.find(n => n.id === qname && n.repo === repoName)
+             || rawData.nodes.find(n => n.id === qname);
+  if (known) {
+    selectedNodeId = known.id;
+    showDetail(known);
+    drawGraph();
+    previewNode(known);
+  } else {
+    // A connected symbol that fell outside the exported slice — preview it anyway.
+    previewNode({ repo: repoName, id: qname, name: shortName(qname), file_path: '' });
+  }
+}
+
+function connCount(d) {
+  if (!d.found) return 0;
+  return d.callers.length + d.callees.length + d.dependencies.length
+       + d.dependents.length + d.siblings.length;
+}
+
+function renderNode() {
+  const el = panelEls();
+  const d = preview.data;
+  if (!d.found) {
+    el.title.textContent = preview.qname;
+    el.tabs.innerHTML = '';
+    panelMessage(`<p>${esc(d.error || 'Not found.')}</p>`);
+    return;
+  }
+  const n = d.node;
+  const isFile = n.kind === 'File' || n.kind === 'Config' || n.kind === 'Service';
+  const range = isFile ? '' : `:${n.start_line}-${n.end_line}`;
+
+  el.title.innerHTML =
+    `<span class="kind-pill" style="background:${KIND_COLORS[n.kind] || '#94a3a2'}">${esc(n.kind)}</span>
+     <span style="margin-left:8px">${esc(n.name)}</span>`;
+  el.sub.textContent = `${n.repo} · ${n.file_path}${range}`;
+
+  const tabs = [];
+  if (!isFile) tabs.push(['symbol', 'Symbol', null]);
+  tabs.push(['file', 'File', null]);
+  tabs.push(['connections', 'Connections', connCount(d)]);
+  if (!tabs.some(t => t[0] === preview.tab)) preview.tab = tabs[0][0];
+
+  el.tabs.innerHTML = tabs.map(([id, label, count]) =>
+    `<button class="preview-tab ${id === preview.tab ? 'active' : ''}" data-tab="${id}">${label}${
+      count != null ? `<span class="count">${count}</span>` : ''}</button>`).join('');
+  el.tabs.querySelectorAll('.preview-tab').forEach(btn => {
+    btn.addEventListener('click', () => { preview.tab = btn.dataset.tab; renderNode(); });
+  });
+
+  if (preview.tab === 'connections') { el.body.innerHTML = connectionsHtml(d); wireConnRows(el.body); }
+  else el.body.innerHTML = sourceHtml(d, preview.tab === 'symbol');
+
+  el.body.scrollTop = 0;
+  if (preview.tab === 'file') {
+    const first = el.body.querySelector('.code-line.hl');
+    if (first) first.scrollIntoView({ block: 'center' });
+  }
+}
+
+function sourceHtml(d, symbolOnly) {
+  const src = d.source, n = d.node;
+  if (!src.found) {
+    return `<div class="preview-empty"><p>${esc(src.error || 'Source unavailable.')}</p></div>`;
+  }
+  const lang = langOf(n.file_path);
+  const lines = src.content.split('\n');
+
+  if (symbolOnly) {
+    const from = Math.max(1, n.start_line), to = Math.min(lines.length, n.end_line);
+    const text = lines.slice(from - 1, to).join('\n');
+    return `<div class="code-view">${codeBlock(text, lang, from, from, to)}</div>`;
+  }
+
+  let note = src.truncated
+    ? `<div class="preview-note">File truncated at ${Math.round(src.bytes / 1024)} KB.</div>` : '';
+  const MAX = 4000;
+  let text = src.content;
+  if (lines.length > MAX) {
+    text = lines.slice(0, MAX).join('\n');
+    note = `<div class="preview-note">Showing the first ${MAX} of ${lines.length} lines.</div>`;
+  }
+  const hlFrom = isFileKind(n.kind) ? 0 : n.start_line;
+  const hlTo = isFileKind(n.kind) ? -1 : n.end_line;
+  return note + `<div class="code-view">${codeBlock(text, lang, 1, hlFrom, hlTo)}</div>`;
+}
+
+function isFileKind(kind) {
+  return kind === 'File' || kind === 'Config' || kind === 'Service';
+}
+
+// ── Connections: the files and functions this node is wired to ──
+function connectionsHtml(d) {
+  const n = d.node;
+  const groups = [];
+
+  groups.push(['Called by', d.callers.map(c => ({
+    name: shortName(c.qualified_name), qname: c.qualified_name, repo: c.repo,
+    kind: c.kind, path: `${c.file_path}:${c.start_line}`, clickable: true,
+  })), 'Nothing in the graph calls this.']);
+
+  groups.push(['Calls', d.callees.map(c => ({
+    name: c.resolved ? shortName(c.callee) : c.callee,
+    qname: c.resolved ? c.callee : null, repo: n.repo, kind: c.kind,
+    path: c.resolved && c.file_path ? `${c.file_path}:${c.start_line}` : 'unresolved',
+    clickable: !!c.resolved, unresolved: !c.resolved,
+  })), 'This symbol calls nothing the graph could resolve.']);
+
+  groups.push([`Imports of ${fileName(n.file_path)}`, d.dependencies.map(dep => ({
+    name: dep.local_name || dep.target, qname: dep.in_project ? dep.target : null,
+    repo: dep.repo, kind: null, path: dep.in_project ? dep.target : 'external',
+    clickable: !!dep.in_project, unresolved: !dep.in_project,
+  })), 'This file imports nothing.']);
+
+  groups.push(['Imported by', d.dependents.map(dep => ({
+    name: fileName(dep.file_path), qname: null, repo: dep.repo, kind: null,
+    path: dep.file_path, clickable: false,
+  })), 'No indexed file imports this one.']);
+
+  groups.push(['Also in this file', d.siblings.map(sib => ({
+    name: sib.name, qname: sib.qualified_name, repo: n.repo, kind: sib.kind,
+    path: `line ${sib.start_line}`, clickable: true,
+  })), 'Nothing else is defined in this file.']);
+
+  return '<div class="conn-view">' + groups.map(([title, rows, empty]) => `
+    <section class="conn-group">
+      <h4>${esc(title)} ${rows.length ? `(${rows.length})` : ''}</h4>
+      ${rows.length ? rows.map(connRowHtml).join('') : `<div class="conn-empty">${esc(empty)}</div>`}
+    </section>`).join('') + '</div>';
+}
+
+function connRowHtml(r) {
+  const kind = r.kind
+    ? `<span class="cr-kind" style="background:${KIND_COLORS[r.kind] || '#94a3a2'}">${esc(r.kind)}</span>` : '';
+  const attrs = r.clickable && r.qname
+    ? ` class="conn-row clickable" data-qname="${esc(r.qname)}" data-repo="${esc(r.repo || '')}"`
+    : ' class="conn-row"';
+  const path = r.path
+    ? `<span class="cr-path${r.unresolved ? ' cr-unresolved' : ''}">${esc(r.path)}</span>` : '';
+  return `<div${attrs}>${kind}<span class="cr-name">${esc(r.name)}</span>${path}</div>`;
+}
+
+function wireConnRows(root) {
+  root.querySelectorAll('.conn-row.clickable').forEach(row => {
+    row.addEventListener('click', () => loadNodeByName(row.dataset.repo, row.dataset.qname));
+  });
+}
+
+function shortName(qname) { return String(qname).split(/[.\/]/).pop() || qname; }
+function fileName(path) { return String(path).split('/').pop() || path; }
+
+// ── Code rendering ──────────────────────────────────────────────────────────
+// A small tokenizer rather than a highlighting library: it keeps the page
+// self-contained (no extra CDN fetch) and a preview pane does not need more.
+
+const LANG_FAMILY = {
+  py: 'py', pyi: 'py', pyw: 'py',
+  js: 'js', jsx: 'js', mjs: 'js', cjs: 'js', ts: 'js', tsx: 'js', mts: 'js',
+  json: 'json',
+  css: 'css', scss: 'css', less: 'css',
+  html: 'html', htm: 'html', jinja: 'html', jinja2: 'html', j2: 'html', vue: 'html', svg: 'html',
+  yml: 'yaml', yaml: 'yaml',
+  sh: 'sh', bash: 'sh', zsh: 'sh', toml: 'sh', ini: 'sh', cfg: 'sh', conf: 'sh',
+};
+
+const KEYWORDS = {
+  py: 'def|class|return|import|from|as|if|elif|else|for|while|try|except|finally|with|pass|raise|yield|lambda|global|nonlocal|assert|del|in|is|not|and|or|None|True|False|async|await|self|cls|match|case',
+  js: 'function|class|const|let|var|return|import|from|export|default|if|else|for|while|do|try|catch|finally|switch|case|break|continue|new|this|typeof|instanceof|await|async|yield|null|undefined|true|false|extends|super|of|in|delete|void|interface|type|enum|implements|public|private|protected|readonly|static|throw|as',
+  json: 'true|false|null',
+  css: 'important|media|import|keyframes|supports|charset|font-face',
+  html: '',
+  yaml: 'true|false|null|yes|no|on|off',
+  sh: 'if|then|else|elif|fi|for|while|do|done|case|esac|function|return|export|local|source|FROM|RUN|CMD|COPY|ADD|ENV|WORKDIR|EXPOSE|ENTRYPOINT|VOLUME|ARG|USER|HEALTHCHECK',
+};
+
+const COMMENTS = {
+  py: '#[^\\n]*',
+  js: '//[^\\n]*|/\\*[\\s\\S]*?\\*/',
+  json: '',
+  css: '/\\*[\\s\\S]*?\\*/',
+  html: '<!--[\\s\\S]*?-->',
+  yaml: '#[^\\n]*',
+  sh: '#[^\\n]*',
+};
+
+// Triple-quoted forms come first so a docstring is one token, not three.
+const STRINGS = {
+  py: '"""[\\s\\S]*?"""|\'\'\'[\\s\\S]*?\'\'\'|"(?:[^"\\\\\\n]|\\\\.)*"|\'(?:[^\'\\\\\\n]|\\\\.)*\'',
+  js: '`(?:[^`\\\\]|\\\\.)*`|"(?:[^"\\\\\\n]|\\\\.)*"|\'(?:[^\'\\\\\\n]|\\\\.)*\'',
+  json: '"(?:[^"\\\\\\n]|\\\\.)*"',
+  css: '"(?:[^"\\\\\\n]|\\\\.)*"|\'(?:[^\'\\\\\\n]|\\\\.)*\'',
+  html: '"(?:[^"\\\\\\n]|\\\\.)*"|\'(?:[^\'\\\\\\n]|\\\\.)*\'',
+  yaml: '"(?:[^"\\\\\\n]|\\\\.)*"|\'[^\'\\n]*\'',
+  sh: '"(?:[^"\\\\\\n]|\\\\.)*"|\'[^\'\\n]*\'',
+};
+
+const _reCache = {};
+function langRegex(family) {
+  if (_reCache[family]) return _reCache[family];
+  const parts = [];
+  if (COMMENTS[family]) parts.push(`(?<comment>${COMMENTS[family]})`);
+  if (STRINGS[family]) parts.push(`(?<string>${STRINGS[family]})`);
+  parts.push('(?<def>(?<=\\b(?:def|class|function|interface)\\s+)[A-Za-z_$][\\w$]*)');
+  if (KEYWORDS[family]) parts.push(`(?<keyword>\\b(?:${KEYWORDS[family]})\\b)`);
+  parts.push('(?<number>\\b\\d[\\d_]*(?:\\.\\d+)?\\b)');
+  return (_reCache[family] = new RegExp(parts.join('|'), 'g'));
+}
+
+function langOf(filePath) {
+  const base = String(filePath || '').split('/').pop().toLowerCase();
+  if (base === 'dockerfile' || base.startsWith('dockerfile.')) return 'sh';
+  if (base.startsWith('.env')) return 'sh';
+  const ext = base.includes('.') ? base.split('.').pop() : '';
+  return LANG_FAMILY[ext] || '';
+}
+
+// Tokenize the whole text rather than line by line, so a multi-line string or
+// block comment stays one token; tokens are then split across line boundaries.
+function highlightLines(code, family) {
+  const lines = [[]];
+  const push = (text, type) => {
+    const parts = String(text).split('\n');
+    parts.forEach((part, i) => {
+      if (i > 0) lines.push([]);
+      if (part) {
+        lines[lines.length - 1].push(
+          type ? `<span class="tok-${type}">${esc(part)}</span>` : esc(part));
+      }
+    });
+  };
+
+  if (!family) {
+    push(code, null);
+  } else {
+    const re = langRegex(family);
+    re.lastIndex = 0;
+    let last = 0, m;
+    while ((m = re.exec(code)) !== null) {
+      if (m[0] === '') { re.lastIndex++; continue; }
+      if (m.index > last) push(code.slice(last, m.index), null);
+      const type = Object.keys(m.groups).find(k => m.groups[k] !== undefined);
+      push(m[0], type);
+      last = re.lastIndex;
+    }
+    if (last < code.length) push(code.slice(last), null);
+  }
+  return lines.map(parts => parts.join(''));
+}
+
+function codeBlock(text, lang, startLine, hlFrom, hlTo) {
+  return highlightLines(text, lang).map((line, i) => {
+    const num = startLine + i;
+    const hl = hlFrom > 0 && num >= hlFrom && num <= hlTo;
+    return `<div class="code-line${hl ? ' hl' : ''}"><span class="ln">${num}</span><span class="lc">${line || ' '}</span></div>`;
+  }).join('');
+}
+
+// ── Markdown ────────────────────────────────────────────────────────────────
+// Deliberately small and self-contained. Everything is escaped before any
+// markup is added, and only http(s)/mailto links become clickable; images
+// render as labels rather than <img>, so a README's badges never turn this
+// page into something that makes outbound requests.
+
+function safeUrl(url) {
+  const trimmed = String(url).trim();
+  return /^(https?:\/\/|mailto:)/i.test(trimmed) ? trimmed : null;
+}
+
+// The URL part tolerates one level of nested parens — Wikipedia-style links
+// like (https://x/foo_(bar)) are common — plus an optional "title" suffix.
+// The optional title after the URL is matched loosely because the text has
+// already been escaped, so a "title" arrives as &quot;title&quot;.
+const _URL_PART = '\\(\\s*([^()\\s]*(?:\\([^()]*\\)[^()\\s]*)*)(?:\\s+[^)]*)?\\s*\\)';
+const LINK_RE = new RegExp('\\[([^\\]]+)\\]' + _URL_PART, 'g');
+const IMAGE_RE = new RegExp('!\\[([^\\]]*)\\]' + _URL_PART, 'g');
+
+function mdInline(text) {
+  const spans = [];
+  const stash = html => `\u0000S${spans.push(html) - 1}\u0000`;
+
+  let out = esc(text);
+  out = out.replace(/`([^`]+)`/g, (m, code) => stash(`<code>${code}</code>`));
+  out = out.replace(IMAGE_RE, (m, alt) => stash(`<code>&#9635; ${alt || 'image'}</code>`));
+  out = out.replace(LINK_RE, (m, label, url) => {
+    const safe = safeUrl(url);
+    // `url` came out of already-escaped text, so it cannot break the attribute.
+    return safe
+      ? stash(`<a href="${safe}" target="_blank" rel="noopener noreferrer">${label}</a>`)
+      : stash(`<a class="md-rel" title="relative link: ${url}">${label}</a>`);
+  });
+  out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  out = out.replace(/(^|[^\w*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+  out = out.replace(/(^|[^\w_])_([^_\n]+)_/g, '$1<em>$2</em>');
+  return out.replace(/\u0000S(\d+)\u0000/g, (m, i) => spans[+i]);
+}
+
+function renderMarkdown(src) {
+  const fences = [];
+  const text = String(src).replace(/```[\w+-]*\n([\s\S]*?)```/g, (m, code) =>
+    `\u0000F${fences.push(`<pre><code>${esc(code.replace(/\n$/, ''))}</code></pre>`) - 1}\u0000`);
+
+  const lines = text.split('\n');
+  const out = [];
+  let para = [], list = null;
+
+  const flushPara = () => {
+    if (para.length) { out.push(`<p>${mdInline(para.join(' '))}</p>`); para = []; }
+  };
+  const flushList = () => {
+    if (list) {
+      out.push(`<${list.tag}>${list.items.map(i => `<li>${mdInline(i)}</li>`).join('')}</${list.tag}>`);
+      list = null;
+    }
+  };
+  const flush = () => { flushPara(); flushList(); };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    const fence = line.match(/^\u0000F(\d+)\u0000$/);
+    if (fence) { flush(); out.push(fences[+fence[1]]); continue; }
+    if (!line.trim()) { flush(); continue; }
+
+    const heading = line.match(/^(#{1,6})\s+(.*)$/);
+    if (heading) {
+      flush();
+      const level = Math.min(heading[1].length, 4);
+      out.push(`<h${level}>${mdInline(heading[2].replace(/\s*#+\s*$/, ''))}</h${level}>`);
+      continue;
+    }
+    if (/^([-*_])\s*\1\s*\1[-*_\s]*$/.test(line)) { flush(); out.push('<hr>'); continue; }
+
+    // A table is a header row followed by a |---|---| separator.
+    if (line.includes('|') && /^\s*\|?[\s:|-]*-[\s:|-]*$/.test(lines[i + 1] || '') && (lines[i + 1] || '').includes('-')) {
+      flush();
+      const cells = row => row.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map(c => c.trim());
+      const head = cells(line);
+      const body = [];
+      i += 2;
+      while (i < lines.length && lines[i].includes('|') && lines[i].trim()) { body.push(cells(lines[i])); i++; }
+      i--;
+      out.push(`<table><thead><tr>${head.map(c => `<th>${mdInline(c)}</th>`).join('')}</tr></thead>` +
+        `<tbody>${body.map(r => `<tr>${r.map(c => `<td>${mdInline(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
+      continue;
+    }
+
+    const quote = line.match(/^>\s?(.*)$/);
+    if (quote) { flush(); out.push(`<blockquote>${mdInline(quote[1])}</blockquote>`); continue; }
+
+    const bullet = line.match(/^\s*[-*+]\s+(.*)$/);
+    const numbered = line.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (bullet || numbered) {
+      flushPara();
+      const tag = bullet ? 'ul' : 'ol';
+      if (!list || list.tag !== tag) { flushList(); list = { tag, items: [] }; }
+      list.items.push((bullet || numbered)[1]);
+      continue;
+    }
+
+    if (list && !para.length) {
+      // Lazy continuation: a wrapped line belongs to the item above it, not
+      // to a new paragraph that would break out of the list.
+      list.items[list.items.length - 1] += ` ${line.trim()}`;
+      continue;
+    }
+    flushList();
+    para.push(line.trim());
+  }
+  flush();
+  return out.join('\n');
+}
+
 
 // ── Canvas rendering ──
 function setupCanvas() {
@@ -694,6 +1434,7 @@ function initCanvasInteraction() {
     if (node) {
       showDetail(node);
       drawGraph();
+      if (apiReachable) previewNode(node);
     }
   });
 
@@ -732,19 +1473,60 @@ function initCanvasInteraction() {
 }
 
 // ── Init ──
+// Served by the code-graph service, `/api/graph` is the live graph and the
+// preview endpoints are there too. Opened off disk, the exported
+// graph-data.json still draws the graph — but previews need the server.
+async function loadGraph() {
+  const sources = SERVED ? ['/api/graph', 'graph-data.json'] : ['graph-data.json'];
+  for (const url of sources) {
+    try {
+      const res = await fetch(`${url}?v=${Date.now()}`);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data && Array.isArray(data.nodes)) {
+        if (url !== '/api/graph') apiReachable = false;
+        return data;
+      }
+    } catch { /* try the next source */ }
+  }
+  return null;
+}
+
+function initPreviewControls() {
+  document.getElementById('preview-close').addEventListener('click', closePanel);
+  document.getElementById('readme-btn')
+    .addEventListener('click', () => previewReadme(selectedRepo));
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closePanel();
+  });
+
+  const panel = document.getElementById('preview');
+  let dragging = false, startX = 0, startW = 0;
+  document.getElementById('preview-resizer').addEventListener('mousedown', e => {
+    dragging = true;
+    startX = e.clientX;
+    startW = panel.getBoundingClientRect().width;
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const width = Math.min(Math.max(startW + (startX - e.clientX), 320), window.innerWidth * 0.75);
+    panel.style.width = `${width}px`;
+  });
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.userSelect = '';
+    setupCanvas();
+    drawGraph();
+  });
+}
+
 async function init() {
   setupCanvas();
 
-  try {
-    const res = await fetch('graph-data.json?v=' + Date.now());
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    rawData = await res.json();
-  } catch {
-    try {
-      const res = await fetch('/api/graph');
-      if (res.ok) rawData = await res.json();
-    } catch { /* */ }
-  }
+  rawData = await loadGraph();
 
   document.getElementById('loading').remove();
 
@@ -767,6 +1549,7 @@ async function init() {
   buildKindFilters();
   buildEdgeFilters();
   initCanvasInteraction();
+  initPreviewControls();
   rebuildGraph();
 }
 

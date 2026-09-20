@@ -72,7 +72,9 @@ honestly unresolved rather than guessed.
 
 ```
                           docker compose (mem_limit 500m, read-only rootfs)
-  Claude Code  ──HTTP──►  127.0.0.1:8765/mcp  ──►  FastMCP tools
+  Claude Code  ──HTTP──►  127.0.0.1:8765/mcp   ──►  FastMCP tools
+                                                     │
+  Browser      ──HTTP──►  127.0.0.1:8765/     ──►  visualizer + /api/*
                                                      │
                                     ┌────────────────┼─────────────────┐
                                     ▼                ▼                 ▼
@@ -104,7 +106,9 @@ src/code_graph/
     generic.py           grammar-less fallback for arbitrary config files
   indexer.py             walk + per-file pipeline + batched commits + incremental reindex
   resolver.py            graduated call-resolution cascade
-  queries.py             read-side graph queries backing the tools
+  queries.py             read-side graph queries backing the tools + previews
+  graph_export.py        the visualizer's {nodes, links, repos, stats} payload
+  web.py                 HTTP routes serving the visualizer and its previews
   server.py              FastMCP app + tool definitions (workspaces trust boundary)
   __main__.py            `python -m code_graph`
 ```
@@ -172,6 +176,52 @@ trace_call_path(qualified_name="pkg.module.function", direction="callers", depth
 | `trace_call_path(qualified_name, direction, depth, repo=None)` | BFS over the call graph, either direction, depth-limited (1–20), cycle-safe. |
 | `get_dependencies(file_path, repo=None)` | Imports of a file, each flagged in-project or external. |
 | `get_code_snippet(qualified_name, repo=None)` | Source text, **read fresh from disk** (never stored in the DB). |
+
+---
+
+## Visualizer
+
+The service also serves a browser UI on the same port. With the container up,
+open:
+
+```
+http://127.0.0.1:8765/
+```
+
+You get the force-directed graph (filter by repo, node kind and edge type,
+search by symbol) plus a preview panel:
+
+| Select | You get |
+|---|---|
+| A **repository** | its `README` at the repo root, rendered |
+| A **file** or config node | the whole file, syntax-highlighted with line numbers |
+| A **function**, method or class | **Symbol** — just its own lines; **File** — the whole file with those lines highlighted; **Connections** — what calls it, what it calls, its file's imports, the files importing it, and its siblings |
+
+Every row under **Connections** that resolves to a real node is clickable, so
+you can walk the call graph through the source rather than through the canvas.
+Press <kbd>Esc</kbd> to close the panel; drag its left edge to resize it.
+
+These previews read each file **fresh from disk** through the same
+`safe_join` confinement the MCP tools use — the database still stores
+structure only, never source text.
+
+The page is served from the same origin as `/api/*`, so the API needs no CORS
+headers and no other site your browser visits can read it.
+
+<details>
+<summary>Opening the page without the service</summary>
+
+`visualizer/index.html` also works straight off disk, drawing an exported
+snapshot instead of the live graph:
+
+```bash
+python visualizer/export_graph.py      # writes visualizer/graph-data.json
+```
+
+The graph renders, but previews are unavailable — reading README and source
+files needs the server's access to the workspaces mount. The page says so
+rather than failing silently.
+</details>
 
 ---
 
@@ -266,6 +316,13 @@ Nothing else in the pipeline needs to change. Two knobs cover the awkward cases:
 - **Read-only repos.** `/workspaces` is mounted `:ro`. Repo paths from tool
   arguments are confined to the mount (`safe_join`) — no `../` traversal or
   symlink escapes; symlinks are not followed during the walk.
+- **Previews are confined to the selected repo.** `/api/file` takes a path from
+  the caller, so it is confined to that repo's root rather than to the whole
+  mount: `../another-repo/.env` is refused even though it sits inside
+  `/workspaces`. Binary files are refused and reads are capped at 1 MB.
+- **No CORS.** The `/api/*` routes send no `Access-Control-Allow-Origin`, and
+  the UI is served same-origin, so a page on another site cannot read your
+  code through them.
 - **Hardened container.** Unprivileged user, read-only root filesystem,
   `no-new-privileges`, `tmpfs` `/tmp`.
 - **No egress.** No `requests`/`urllib`/`httpx`/`socket` outbound use in the

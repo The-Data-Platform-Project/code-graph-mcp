@@ -20,17 +20,33 @@ Everything Docker/pytest runs via `wsl -e bash -lc "..."`.
 - Service: `docker compose up -d`; endpoint `http://127.0.0.1:8765/mcp` (reachable from Windows via WSL localhost forwarding). `.mcp.json` wires it to Claude Code.
 - `.env` sets `REPOS_HOST_PATH=/mnt/f`, so the whole drive mounts read-only at `/workspaces`; repos are indexed by path relative to `/mnt/f` (e.g. `index_repository("data-platform", "DataPlatform/data-platform")`).
 - The graph persists in host `./data/graph.db` (bind mount) across rebuilds.
+- Browser UI: `http://127.0.0.1:8765/` — the graph plus README/file/symbol
+  previews. `visualizer/index.html` is served by the container (the Dockerfile
+  copies it; `VISUALIZER_DIR` points at it) and is also openable off disk against
+  an exported `graph-data.json`, minus previews.
 - Pass multi-line/JSON to WSL via script files, not inline heredocs (quoting gets mangled).
 
 ## Architecture (`src/code_graph/`)
 
-- `server.py` — FastMCP tools + the workspaces trust boundary (`safe_join`).
+- `server.py` — FastMCP tools + the workspaces trust boundary (`safe_join`). Also
+  registers the visualizer's HTTP routes on the same Starlette app.
+- `web.py` — the browser UI's routes: `/` (serves `visualizer/index.html`),
+  `/api/graph`, `/api/readme`, `/api/node`, `/api/file`. Same-origin by design, so
+  no CORS headers anywhere. `route_specs(config, connect)` returns declarative
+  specs, so tests mount the same handlers on a bare Starlette app.
+- `graph_export.py` — the `{nodes, links, repos, stats}` payload, shared by
+  `/api/graph` and `visualizer/export_graph.py` so the live and static views
+  cannot drift.
 - `indexer.py` — `os.walk` generator → per-file parse → extract → buffer → batched commit → discard tree. One tree in memory at a time (the load-bearing memory discipline). `reindex` is content-hash incremental.
 - `languages.py` — filename/extension → `LanguageSpec` registry. `spec_for(rel)` resolves basename first (Dockerfile/dotfiles), then extension. A spec may be **grammar-less** (`grammar_module=None` → extractor called with `tree=None`); `language_symbol` names a non-default grammar entry (TS).
 - `naming.py` — the shared file-qname scheme. **Code files** (`.py/.js/.ts/...`) → dotted, extension-stripped qname (`src/app/util.js` → `src.app.util`); **everything else** → repo-relative path. `resolve_ref`/`js_import_module` compute cross-file targets by path arithmetic (no FS access).
 - `extractors/` — `python.py`, `javascript.py` (JS+TS), `html.py`, `jinja.py`, `css.py`, `json.py`, `yaml.py`, `generic.py`. Each returns a `FileResult(nodes, edges, imports)` and must not retain the tree. `javascript.py` treats **anonymous function scopes (IIFEs, callbacks) as transparent** — nested named defs attribute to the nearest named container — so IIFE-wrapped modules still yield nodes. `jinja.py` is a regex pass (no grammar) invoked by `html.py`: `{% macro %}` → `Function` node, `{% extends/include/import/from %}` → template `IMPORTS`, macro uses → `CALLS` (restricted to known bindings).
 - `resolver.py` — resolves `CALLS/INHERITS/IMPLEMENTS/USES_TYPE` raw strings to real nodes via a cascade: import-map → self/cls/this → same-module → unique-in-repo → honestly unresolved. Also resolves root-relative asset/template `IMPORTS` (`/static/app.js`, Jinja `{% extends "base.html" %}`) by a unique trailing-path (suffix) match, updating both the `imports` row and the edge. Runs after the whole repo is indexed.
-- `queries.py` — read-side queries backing the tools. `db.py` — schema/WAL. `models.py` — Node/Edge/Import + kind/edge constants. `config.py` — env config.
+- `queries.py` — read-side queries backing the tools, plus the preview side:
+  `get_repo_readme`, `get_file_source`, `get_dependents`, `get_file_symbols` and
+  `get_node_context` (one call returning a node, its source and everything it is
+  wired to). A caller-supplied path is confined to the *repo* root, not merely to
+  the workspaces mount. `db.py` — schema/WAL. `models.py` — Node/Edge/Import + kind/edge constants. `config.py` — env config.
 
 ## Graph model
 
@@ -59,4 +75,7 @@ grammar entry, or `grammar_module=None` for a grammar-less/heuristic format.
 - Grammar wheels are pinned individually; the image builds from `requirements.lock.txt` (runtime never fetches). JSON/TOML/XML/ini are handled grammar-lessly (stdlib `json` for package.json; a generic file-node extractor otherwise).
 - ruff, line-length 100, target py311.
 - Keep the per-file memory discipline: never hold more than one parse tree; buffers hold plain tuples, not tree refs.
+- The visualizer is one self-contained `index.html` — no build step, and no CDN
+  beyond the d3 tag already there. Its markdown renderer and syntax highlighter
+  are deliberately small and hand-written; escape first, then add markup.
 - A missing grammar or a single unparseable file must **skip that file**, never abort a repo index.

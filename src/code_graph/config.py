@@ -40,6 +40,10 @@ class Config:
     # How many files to parse before flushing a batch to SQLite. Bounds peak
     # memory: parse trees are discarded per file, and pending rows per batch.
     commit_batch_files: int
+    # Directory holding the visualizer's index.html, served from `/` on the
+    # same origin as the API so previews need no CORS relaxation. Defaults to
+    # the checkout's ./visualizer; the image sets it to /app/visualizer.
+    visualizer_dir: Path = Path("./visualizer")
 
     @staticmethod
     def from_env() -> "Config":
@@ -50,4 +54,5 @@ class Config:
             port=_int_env("MCP_PORT", 8765),
             max_file_bytes=_int_env("MAX_FILE_BYTES", 1_500_000),
             commit_batch_files=_int_env("COMMIT_BATCH_FILES", 200),
+            visualizer_dir=Path(os.environ.get("VISUALIZER_DIR", "./visualizer")),
         )
