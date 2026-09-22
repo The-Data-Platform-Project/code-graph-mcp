@@ -9,15 +9,18 @@ The cascade, most-precise first, stopping at the first hit:
 
 Resolution runs after the whole repo is indexed (all nodes exist). It reads via
 one connection and writes updates in batches through another, so no write ever
-invalidates the streaming read cursor. Per-source lookups are memoized to keep
-the query count — and it is only ever indexed point lookups — modest.
+invalidates the streaming read cursor. The read uses a *server-side* cursor:
+a client-side one would pull every edge in the repo into memory at execute
+time, which is exactly what this project refuses to do. Per-source lookups are
+memoized to keep the query count — and it is only ever indexed point lookups —
+modest.
 """
 
 from __future__ import annotations
 
-import sqlite3
-from pathlib import Path
 from typing import Optional
+
+import psycopg
 
 from . import db
 from .models import (
@@ -41,58 +44,63 @@ _SELF_HEADS = ("self", "cls", "this")
 _BATCH = 1000
 
 
-def reset_resolution(con: sqlite3.Connection, repo: str) -> None:
+def reset_resolution(con: psycopg.Connection, repo: str) -> None:
     """Restore resolvable edges to their raw, unresolved state (for reindex)."""
     con.execute(
         "UPDATE edges SET dst_qname = dst_raw, resolved = 0 "
-        "WHERE repo = ? AND edge_type IN (?, ?, ?, ?)",
+        "WHERE repo = %s AND edge_type IN (%s, %s, %s, %s)",
         (repo, *_RESOLVE_EDGES),
     )
     con.commit()
 
 
-def resolve_repo(write_con: sqlite3.Connection, db_path: Path, repo: str) -> None:
+def resolve_repo(write_con: psycopg.Connection, dsn: str, repo: str) -> None:
     """Resolve every CALLS/INHERITS/IMPLEMENTS/USES_TYPE edge, and flag IMPORTS."""
     _flag_imports(write_con, repo)
     _resolve_rooted_assets(write_con, repo)
 
-    read_con = db.connect(db_path)
+    read_con = db.connect(dsn)
     try:
         resolver = _Resolver(read_con, repo)
-        cur = read_con.execute(
-            "SELECT id, edge_type, src_qname, dst_raw, src_file FROM edges "
-            "WHERE repo = ? AND edge_type IN (?, ?, ?, ?) ORDER BY src_file",
-            (repo, *_RESOLVE_EDGES),
-        )
         updates: list[tuple[str, int]] = []
         cur_file: Optional[str] = None
         import_map: dict[str, tuple[str, str]] = {}
-        while True:
-            batch = cur.fetchmany(_BATCH)
-            if not batch:
-                break
-            for row in batch:
-                if row["src_file"] != cur_file:
-                    cur_file = row["src_file"]
-                    import_map = resolver.load_import_map(cur_file)
-                dst = resolver.resolve(
-                    row["edge_type"], row["src_qname"], row["dst_raw"], import_map
-                )
-                if dst is not None:
-                    updates.append((dst, row["id"]))
-            if len(updates) >= _BATCH:
-                _flush(write_con, updates)
-                updates.clear()
+        # Named cursor => the rows stream from the server in FETCH-sized
+        # chunks instead of all landing in this process at once.
+        with read_con.cursor(name="edge_scan") as cur:
+            cur.itersize = _BATCH
+            cur.execute(
+                "SELECT id, edge_type, src_qname, dst_raw, src_file FROM edges "
+                "WHERE repo = %s AND edge_type IN (%s, %s, %s, %s) ORDER BY src_file",
+                (repo, *_RESOLVE_EDGES),
+            )
+            while True:
+                batch = cur.fetchmany(_BATCH)
+                if not batch:
+                    break
+                for row in batch:
+                    if row["src_file"] != cur_file:
+                        cur_file = row["src_file"]
+                        import_map = resolver.load_import_map(cur_file)
+                    dst = resolver.resolve(
+                        row["edge_type"], row["src_qname"], row["dst_raw"], import_map
+                    )
+                    if dst is not None:
+                        updates.append((dst, row["id"]))
+                if len(updates) >= _BATCH:
+                    _flush(write_con, updates)
+                    updates.clear()
         if updates:
             _flush(write_con, updates)
     finally:
         read_con.close()
 
 
-def _flush(con: sqlite3.Connection, updates: list[tuple[str, int]]) -> None:
-    con.executemany(
-        "UPDATE edges SET dst_qname = ?, resolved = 1 WHERE id = ?", updates
-    )
+def _flush(con: psycopg.Connection, updates: list[tuple[str, int]]) -> None:
+    with con.cursor() as cur:
+        cur.executemany(
+            "UPDATE edges SET dst_qname = %s, resolved = 1 WHERE id = %s", updates
+        )
     con.commit()
 
 
@@ -100,7 +108,7 @@ def _escape_like(s: str) -> str:
     return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def _resolve_rooted_assets(con: sqlite3.Connection, repo: str) -> None:
+def _resolve_rooted_assets(con: psycopg.Connection, repo: str) -> None:
     """Resolve refs whose base is a doc/template *root*, not the repo root.
 
     Two cases share one mechanism:
@@ -119,9 +127,9 @@ def _resolve_rooted_assets(con: sqlite3.Connection, repo: str) -> None:
     and the ``IMPORTS`` edge (so cross-file graph queries connect).
     """
     candidates = con.execute(
-        "SELECT rowid, file_path, local_name, target FROM imports "
-        "WHERE repo = ? AND ("
-        "  (kind = 'asset' AND local_name LIKE '/%') OR kind = 'template'"
+        "SELECT file_path, local_name, target FROM imports "
+        "WHERE repo = %s AND ("
+        "  (kind = 'asset' AND local_name LIKE '/%%') OR kind = 'template'"
         ") AND NOT EXISTS (SELECT 1 FROM nodes n "
         "  WHERE n.repo = imports.repo AND n.qualified_name = imports.target)",
         (repo,),
@@ -129,7 +137,8 @@ def _resolve_rooted_assets(con: sqlite3.Connection, repo: str) -> None:
     if not candidates:
         return
 
-    import_updates: list[tuple[str, int]] = []
+    # Keyed by the imports primary key: Postgres has no implicit rowid.
+    import_updates: list[tuple[str, str, str, str]] = []
     edge_updates: list[tuple[str, str, str, str]] = []
     for row in candidates:
         rooted = row["local_name"].lstrip("/").split("?", 1)[0].split("#", 1)[0]
@@ -137,42 +146,48 @@ def _resolve_rooted_assets(con: sqlite3.Connection, repo: str) -> None:
             continue
         matches = con.execute(
             "SELECT qualified_name FROM nodes "
-            "WHERE repo = ? AND kind = 'File' "
-            "AND (file_path = ? OR file_path LIKE ? ESCAPE '\\') LIMIT 2",
+            "WHERE repo = %s AND kind = 'File' "
+            "AND (file_path = %s OR file_path LIKE %s ESCAPE '\\') LIMIT 2",
             (repo, rooted, "%/" + _escape_like(rooted)),
         ).fetchall()
         if len(matches) == 1:
             new_target = matches[0]["qualified_name"]
-            import_updates.append((new_target, row["rowid"]))
+            import_updates.append(
+                (new_target, repo, row["file_path"], row["local_name"])
+            )
             edge_updates.append((new_target, repo, row["file_path"], row["local_name"]))
 
-    if import_updates:
-        con.executemany(
-            "UPDATE imports SET target = ? WHERE rowid = ?", import_updates
-        )
-    if edge_updates:
-        con.executemany(
-            "UPDATE edges SET dst_qname = ?, resolved = 1 "
-            "WHERE repo = ? AND edge_type = 'IMPORTS' AND src_file = ? AND dst_raw = ?",
-            edge_updates,
-        )
+    with con.cursor() as cur:
+        if import_updates:
+            cur.executemany(
+                "UPDATE imports SET target = %s "
+                "WHERE repo = %s AND file_path = %s AND local_name = %s",
+                import_updates,
+            )
+        if edge_updates:
+            cur.executemany(
+                "UPDATE edges SET dst_qname = %s, resolved = 1 "
+                "WHERE repo = %s AND edge_type = 'IMPORTS' AND src_file = %s "
+                "AND dst_raw = %s",
+                edge_updates,
+            )
     con.commit()
 
 
-def _flag_imports(con: sqlite3.Connection, repo: str) -> None:
+def _flag_imports(con: psycopg.Connection, repo: str) -> None:
     con.execute(
         "UPDATE edges SET resolved = CASE WHEN EXISTS ("
         "  SELECT 1 FROM nodes n "
         "  WHERE n.repo = edges.repo AND n.qualified_name = edges.dst_qname"
         ") THEN 1 ELSE 0 END "
-        "WHERE repo = ? AND edge_type = 'IMPORTS'",
+        "WHERE repo = %s AND edge_type = 'IMPORTS'",
         (repo,),
     )
     con.commit()
 
 
 class _Resolver:
-    def __init__(self, read_con: sqlite3.Connection, repo: str) -> None:
+    def __init__(self, read_con: psycopg.Connection, repo: str) -> None:
         self._con = read_con
         self._repo = repo
         self._module_cache: dict[str, Optional[str]] = {}
@@ -182,7 +197,7 @@ class _Resolver:
     def load_import_map(self, file_path: str) -> dict[str, tuple[str, str]]:
         rows = self._con.execute(
             "SELECT local_name, target, kind FROM imports "
-            "WHERE repo = ? AND file_path = ?",
+            "WHERE repo = %s AND file_path = %s",
             (self._repo, file_path),
         ).fetchall()
         return {r["local_name"]: (r["target"], r["kind"]) for r in rows}
@@ -225,7 +240,7 @@ class _Resolver:
     # -- indexed point lookups, memoized ----------------------------------
     def _exists(self, qname: str) -> bool:
         row = self._con.execute(
-            "SELECT 1 FROM nodes WHERE repo = ? AND qualified_name = ? LIMIT 1",
+            "SELECT 1 FROM nodes WHERE repo = %s AND qualified_name = %s LIMIT 1",
             (self._repo, qname),
         ).fetchone()
         return row is not None
@@ -238,8 +253,8 @@ class _Resolver:
         for i in range(len(parts) - 1, 0, -1):
             cand = ".".join(parts[:i])
             row = self._con.execute(
-                "SELECT 1 FROM nodes WHERE repo = ? AND qualified_name = ? "
-                "AND kind IN (?, ?) LIMIT 1",
+                "SELECT 1 FROM nodes WHERE repo = %s AND qualified_name = %s "
+                "AND kind IN (%s, %s) LIMIT 1",
                 (self._repo, cand, KIND_CLASS, KIND_INTERFACE),
             ).fetchone()
             if row is not None:
@@ -256,7 +271,7 @@ class _Resolver:
         for i in range(len(parts), 0, -1):
             cand = ".".join(parts[:i])
             row = self._con.execute(
-                "SELECT 1 FROM nodes WHERE repo = ? AND qualified_name = ? "
+                "SELECT 1 FROM nodes WHERE repo = %s AND qualified_name = %s "
                 "AND kind = 'File' LIMIT 1",
                 (self._repo, cand),
             ).fetchone()
@@ -273,8 +288,8 @@ class _Resolver:
         kinds = _TYPE_KINDS if edge_type in _TYPE_EDGES else _CALL_KINDS
         rows = self._con.execute(
             "SELECT qualified_name FROM nodes "
-            "WHERE repo = ? AND name = ? AND kind IN ({}) LIMIT 2".format(
-                ",".join("?" * len(kinds))
+            "WHERE repo = %s AND name = %s AND kind IN ({}) LIMIT 2".format(
+                ",".join(["%s"] * len(kinds))
             ),
             (self._repo, name, *kinds),
         ).fetchall()

@@ -1,4 +1,9 @@
-"""Shared fixtures: a small but representative sample repo, indexed into a temp DB.
+"""Shared fixtures: a small but representative sample repo, indexed into Postgres.
+
+Every test gets its own Postgres *schema*, created and dropped around it, so
+tests are isolated without the cost of a database per test. Point
+TEST_DATABASE_URL at any reachable Postgres; docker-compose's `postgres`
+service works, as does a local install.
 
 The sample deliberately exercises every resolution branch:
 - import-map resolution (`from .utils import helper`)
@@ -9,9 +14,13 @@ The sample deliberately exercises every resolution branch:
 
 from __future__ import annotations
 
+import os
 import sys
+import uuid
 from pathlib import Path
+from urllib.parse import quote
 
+import psycopg
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -19,6 +28,32 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from code_graph import db  # noqa: E402
 from code_graph.config import Config  # noqa: E402
 from code_graph.indexer import Indexer  # noqa: E402
+
+TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL", "postgresql://postgres@127.0.0.1:5432/postgres"
+)
+
+
+def _dsn_for_schema(schema: str) -> str:
+    """Same database, but every statement resolves inside `schema`."""
+    sep = "&" if "?" in TEST_DATABASE_URL else "?"
+    return f"{TEST_DATABASE_URL}{sep}options={quote(f'-csearch_path={schema}')}"
+
+
+@pytest.fixture
+def database_url():
+    """An empty, isolated schema for one test, dropped afterwards."""
+    schema = f"t_{uuid.uuid4().hex[:12]}"
+    try:
+        admin = psycopg.connect(TEST_DATABASE_URL, autocommit=True)
+    except psycopg.OperationalError as exc:  # pragma: no cover - env problem
+        pytest.skip(f"no Postgres at TEST_DATABASE_URL: {exc}")
+    try:
+        admin.execute(f'CREATE SCHEMA "{schema}"')
+        yield _dsn_for_schema(schema)
+    finally:
+        admin.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+        admin.close()
 
 _UTILS = '''\
 import json
@@ -87,9 +122,9 @@ def sample_root(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def config(tmp_path: Path, sample_root: Path) -> Config:
+def config(database_url: str, sample_root: Path) -> Config:
     return Config(
-        db_path=tmp_path / "graph.db",
+        database_url=database_url,
         workspaces_root=sample_root.parent,  # /workspaces contains "sample"
         host="127.0.0.1",
         port=8765,
@@ -106,13 +141,13 @@ def indexed(config: Config, sample_root: Path) -> Config:
 
 @pytest.fixture
 def conn(indexed: Config):
-    con = db.connect(indexed.db_path)
+    con = db.connect(indexed.database_url)
     yield con
     con.close()
 
 
 @pytest.fixture
-def make_repo(tmp_path: Path):
+def make_repo(tmp_path: Path, database_url: str):
     """Factory: write a {rel_path: content} repo, index it, return (conn, config).
 
     Used by the multi-language extractor tests to build small, focused samples
@@ -129,7 +164,7 @@ def make_repo(tmp_path: Path):
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(content, encoding="utf-8")
         cfg = Config(
-            db_path=tmp_path / "graph.db",
+            database_url=database_url,
             workspaces_root=root,
             host="127.0.0.1",
             port=8765,
@@ -137,7 +172,7 @@ def make_repo(tmp_path: Path):
             commit_batch_files=200,
         )
         Indexer(cfg).index_full(name, repo, name)
-        con = db.connect(cfg.db_path)
+        con = db.connect(cfg.database_url)
         conns.append(con)
         return con, cfg
 

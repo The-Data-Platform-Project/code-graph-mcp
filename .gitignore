@@ -25,3 +25,10 @@ venv/
 
 # Machine-local Claude Code settings (not shared)
 .claude/settings.local.json
+
+# Next.js app
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.vercel
+frontend/*.tsbuildinfo

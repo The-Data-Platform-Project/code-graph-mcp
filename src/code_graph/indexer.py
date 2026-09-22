@@ -5,8 +5,9 @@ Memory discipline (the load-bearing part of this project):
   materialized.
 - Each file is parsed, extracted, its rows buffered, and its parse tree dropped
   before the next file is read. No tree is ever held across files.
-- Rows are flushed to SQLite every `commit_batch_files` files, so pending state
-  is bounded to a couple hundred files' worth of small tuples, not the repo.
+- Rows are flushed to Postgres every `commit_batch_files` files, so pending
+  state is bounded to a couple hundred files' worth of small tuples, not the
+  repo.
 - Buffers hold plain tuples ready for `executemany`, not objects that reference
   the tree.
 
@@ -38,6 +39,28 @@ _PRUNE_DIRS = frozenset(
 )
 
 
+# Write statements, kept in one place since the batch flush and the
+# single-file reindex path both use them.
+_INSERT_NODE = (
+    "INSERT INTO nodes(repo,kind,name,qualified_name,file_path,"
+    "start_line,end_line,signature) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)"
+)
+_INSERT_EDGE = (
+    "INSERT INTO edges(repo,edge_type,src_qname,dst_qname,dst_raw,"
+    "src_file,resolved) VALUES(%s,%s,%s,%s,%s,%s,%s)"
+)
+_UPSERT_IMPORT = (
+    "INSERT INTO imports(repo,file_path,local_name,target,kind) "
+    "VALUES(%s,%s,%s,%s,%s) "
+    "ON CONFLICT (repo,file_path,local_name) DO UPDATE SET "
+    "target=EXCLUDED.target, kind=EXCLUDED.kind"
+)
+_UPSERT_FILE = (
+    "INSERT INTO files(repo,path,hash) VALUES(%s,%s,%s) "
+    "ON CONFLICT (repo,path) DO UPDATE SET hash=EXCLUDED.hash"
+)
+
+
 @dataclass
 class IndexResult:
     repo: str
@@ -55,13 +78,12 @@ class Indexer:
 
     # -- public operations -------------------------------------------------
     def index_full(self, name: str, abs_root: Path, rel_path: str) -> IndexResult:
-        con = db.connect(self._config.db_path)
+        con = db.connect(self._config.database_url)
         try:
             _clear_repo(con, name)
             files_indexed, files_skipped = self._ingest(con, name, abs_root)
-            resolver.resolve_repo(con, self._config.db_path, name)
+            resolver.resolve_repo(con, self._config.database_url, name)
             nodes, edges = _finalize(con, name, rel_path)
-            db.checkpoint(con)
             return IndexResult(
                 repo=name,
                 files_indexed=files_indexed,
@@ -75,12 +97,12 @@ class Indexer:
             con.close()
 
     def reindex(self, name: str, abs_root: Path, rel_path: str) -> IndexResult:
-        con = db.connect(self._config.db_path)
+        con = db.connect(self._config.database_url)
         try:
             known = {
                 row["path"]: row["hash"]
                 for row in con.execute(
-                    "SELECT path, hash FROM files WHERE repo = ?", (name,)
+                    "SELECT path, hash FROM files WHERE repo = %s", (name,)
                 )
             }
             seen: set[str] = set()
@@ -107,9 +129,8 @@ class Indexer:
             # Resolution is repo-global; reset and rerun so cross-file edges
             # stay consistent after adds/removes.
             resolver.reset_resolution(con, name)
-            resolver.resolve_repo(con, self._config.db_path, name)
+            resolver.resolve_repo(con, self._config.database_url, name)
             nodes, edges = _finalize(con, name, rel_path)
-            db.checkpoint(con)
             return IndexResult(
                 repo=name,
                 files_indexed=changed,
@@ -132,33 +153,19 @@ class Indexer:
         file_buf: list[tuple] = []
 
         def flush() -> None:
-            if node_buf:
-                con.executemany(
-                    "INSERT INTO nodes(repo,kind,name,qualified_name,file_path,"
-                    "start_line,end_line,signature) VALUES(?,?,?,?,?,?,?,?)",
-                    node_buf,
-                )
-                node_buf.clear()
-            if edge_buf:
-                con.executemany(
-                    "INSERT INTO edges(repo,edge_type,src_qname,dst_qname,dst_raw,"
-                    "src_file,resolved) VALUES(?,?,?,?,?,?,?)",
-                    edge_buf,
-                )
-                edge_buf.clear()
-            if import_buf:
-                con.executemany(
-                    "INSERT OR REPLACE INTO imports(repo,file_path,local_name,"
-                    "target,kind) VALUES(?,?,?,?,?)",
-                    import_buf,
-                )
-                import_buf.clear()
-            if file_buf:
-                con.executemany(
-                    "INSERT OR REPLACE INTO files(repo,path,hash) VALUES(?,?,?)",
-                    file_buf,
-                )
-                file_buf.clear()
+            with con.cursor() as cur:
+                if node_buf:
+                    cur.executemany(_INSERT_NODE, node_buf)
+                    node_buf.clear()
+                if edge_buf:
+                    cur.executemany(_INSERT_EDGE, edge_buf)
+                    edge_buf.clear()
+                if import_buf:
+                    cur.executemany(_UPSERT_IMPORT, import_buf)
+                    import_buf.clear()
+                if file_buf:
+                    cur.executemany(_UPSERT_FILE, file_buf)
+                    file_buf.clear()
             con.commit()
 
         batch_size = self._config.commit_batch_files
@@ -191,25 +198,12 @@ class Indexer:
         import_buf: list[tuple] = []
         file_buf: list[tuple] = []
         _buffer(name, rel, digest, result, node_buf, edge_buf, import_buf, file_buf)
-        con.executemany(
-            "INSERT INTO nodes(repo,kind,name,qualified_name,file_path,"
-            "start_line,end_line,signature) VALUES(?,?,?,?,?,?,?,?)",
-            node_buf,
-        )
-        con.executemany(
-            "INSERT INTO edges(repo,edge_type,src_qname,dst_qname,dst_raw,"
-            "src_file,resolved) VALUES(?,?,?,?,?,?,?)",
-            edge_buf,
-        )
-        if import_buf:
-            con.executemany(
-                "INSERT OR REPLACE INTO imports(repo,file_path,local_name,"
-                "target,kind) VALUES(?,?,?,?,?)",
-                import_buf,
-            )
-        con.executemany(
-            "INSERT OR REPLACE INTO files(repo,path,hash) VALUES(?,?,?)", file_buf
-        )
+        with con.cursor() as cur:
+            cur.executemany(_INSERT_NODE, node_buf)
+            cur.executemany(_INSERT_EDGE, edge_buf)
+            if import_buf:
+                cur.executemany(_UPSERT_IMPORT, import_buf)
+            cur.executemany(_UPSERT_FILE, file_buf)
 
 
 # --- module-level helpers --------------------------------------------------
@@ -301,38 +295,38 @@ def _buffer(
 
 
 def _clear_repo(con, name: str) -> None:
-    con.execute("DELETE FROM nodes WHERE repo = ?", (name,))
-    con.execute("DELETE FROM edges WHERE repo = ?", (name,))
-    con.execute("DELETE FROM imports WHERE repo = ?", (name,))
-    con.execute("DELETE FROM files WHERE repo = ?", (name,))
-    con.execute("DELETE FROM repos WHERE name = ?", (name,))
+    con.execute("DELETE FROM nodes WHERE repo = %s", (name,))
+    con.execute("DELETE FROM edges WHERE repo = %s", (name,))
+    con.execute("DELETE FROM imports WHERE repo = %s", (name,))
+    con.execute("DELETE FROM files WHERE repo = %s", (name,))
+    con.execute("DELETE FROM repos WHERE name = %s", (name,))
     con.commit()
 
 
 def _drop_file(con, name: str, rel: str) -> None:
     """Remove all graph elements originating from one file."""
-    con.execute("DELETE FROM nodes WHERE repo = ? AND file_path = ?", (name, rel))
-    con.execute("DELETE FROM edges WHERE repo = ? AND src_file = ?", (name, rel))
-    con.execute("DELETE FROM imports WHERE repo = ? AND file_path = ?", (name, rel))
-    con.execute("DELETE FROM files WHERE repo = ? AND path = ?", (name, rel))
+    con.execute("DELETE FROM nodes WHERE repo = %s AND file_path = %s", (name, rel))
+    con.execute("DELETE FROM edges WHERE repo = %s AND src_file = %s", (name, rel))
+    con.execute("DELETE FROM imports WHERE repo = %s AND file_path = %s", (name, rel))
+    con.execute("DELETE FROM files WHERE repo = %s AND path = %s", (name, rel))
 
 
 def _finalize(con, name: str, rel_path: str) -> tuple[int, int]:
-    nodes = con.execute(
-        "SELECT COUNT(*) FROM nodes WHERE repo = ?", (name,)
-    ).fetchone()[0]
-    edges = con.execute(
-        "SELECT COUNT(*) FROM edges WHERE repo = ?", (name,)
-    ).fetchone()[0]
-    files = con.execute(
-        "SELECT COUNT(*) FROM files WHERE repo = ?", (name,)
-    ).fetchone()[0]
+    # Rows come back as dicts, so the counts are aliased rather than positional.
+    def _count(table: str, column: str) -> int:
+        return con.execute(
+            f"SELECT COUNT(*) AS n FROM {table} WHERE {column} = %s", (name,)
+        ).fetchone()["n"]
+
+    nodes = _count("nodes", "repo")
+    edges = _count("edges", "repo")
+    files = _count("files", "repo")
     con.execute(
         "INSERT INTO repos(name,path,indexed_at,node_count,edge_count,file_count) "
-        "VALUES(?,?,?,?,?,?) "
-        "ON CONFLICT(name) DO UPDATE SET path=excluded.path, "
-        "indexed_at=excluded.indexed_at, node_count=excluded.node_count, "
-        "edge_count=excluded.edge_count, file_count=excluded.file_count",
+        "VALUES(%s,%s,%s,%s,%s,%s) "
+        "ON CONFLICT(name) DO UPDATE SET path=EXCLUDED.path, "
+        "indexed_at=EXCLUDED.indexed_at, node_count=EXCLUDED.node_count, "
+        "edge_count=EXCLUDED.edge_count, file_count=EXCLUDED.file_count",
         (name, rel_path, datetime.now(timezone.utc).isoformat(timespec="seconds"),
          nodes, edges, files),
     )

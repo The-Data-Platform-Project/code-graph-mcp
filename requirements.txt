@@ -4,6 +4,7 @@ mcp==1.28.1                     # official MCP SDK (FastMCP, streamable HTTP ser
 tree-sitter==0.26.0             # parser runtime
 uvicorn==0.51.0                 # ASGI server FastMCP runs the HTTP transport on
 starlette==1.3.1                # arrives via mcp; imported directly by web.py
+psycopg[binary]==3.3.6             # Postgres driver for the graph store
 
 # Grammar wheels (bundled; no runtime download). Each declares tree-sitter only
 # under its optional [core] extra, so all coexist with the pinned 0.26 runtime.

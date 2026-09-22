@@ -122,9 +122,16 @@ def test_inherits_resolved(conn):
 
 
 def test_no_source_text_stored(conn):
-    # DB is structure-only: no column should contain the sample's source lines.
-    for (sql,) in conn.execute(
-        "SELECT sql FROM sqlite_master WHERE type='table'"
-    ).fetchall():
-        assert "source" not in sql.lower()
-        assert "content" not in sql.lower()
+    # DB is structure-only: no column should be there to hold source text.
+    columns = [
+        f"{r['table_name']}.{r['column_name']}"
+        for r in conn.execute(
+            "SELECT table_name, column_name FROM information_schema.columns "
+            "WHERE table_schema = current_schema()"
+        ).fetchall()
+    ]
+    assert columns, "expected the graph tables to exist"
+    for column in columns:
+        assert "source" not in column.lower()
+        assert "content" not in column.lower()
+        assert "body" not in column.lower()

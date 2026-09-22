@@ -2,7 +2,7 @@
 
 A persistent, containerized **code knowledge graph** served over MCP. It parses
 your repositories with [tree-sitter](https://tree-sitter.github.io/) into a
-SQLite graph of files, classes, functions, methods, imports and **call chains**,
+Postgres graph of files, classes, functions, methods, imports and **call chains**,
 then exposes structural queries to Claude Code as MCP tools — so a question like
 *"what calls this function?"*, *"what does this page load?"* or *"what does this
 file depend on?"* costs **one graph query** instead of a chain of `grep`/`read`
@@ -27,8 +27,10 @@ service bound to loopback only.
 - **Tiny memory footprint.** ~45 MiB idle; peaked at **122 MiB** while indexing a
   700+ file / 75k-edge repo — against a hard 500 MiB container cap. The indexing
   pipeline processes one file at a time and never holds more than one parse tree.
-- **Persistent.** The graph lives in `./data/graph.db` on a host bind mount, so it
-  survives `docker compose down` and rebuilds, and is directly inspectable.
+- **Persistent.** The graph lives in Postgres on a named volume, so it survives
+  `docker compose down` and rebuilds, and is directly inspectable with `psql`.
+  It can also move to a hosted database ([Supabase](docs/SUPABASE.md)) so the
+  UI can be deployed to Vercel and read it without the tunnel.
 - **Multi-repo, no rebuild.** Mount one parent directory read-only; index any repo
   under it by relative path. Clone a new repo there and it's immediately indexable.
 - **Honest call resolution.** A graduated cascade (imports → same-module →
@@ -67,24 +69,36 @@ honestly unresolved rather than guessed.
 |---|---|
 | Language | Python 3.11 (`python:3.11-slim`, glibc) |
 | Parsing | `tree-sitter` + per-language grammar wheels (Python, JS/TS, HTML, CSS, YAML); config formats parsed grammar-lessly |
-| Storage | stdlib `sqlite3`, WAL mode, hand-written SQL, structure-only |
+| Storage | Postgres 16 via `psycopg`, hand-written SQL, structure-only |
+| App | Next.js 15 (React 19), deployable to Vercel or run in the stack |
 | MCP | official `mcp` SDK / `FastMCP`, streamable HTTP on `127.0.0.1:8765` |
 
 ```
                           docker compose (mem_limit 500m, read-only rootfs)
-  Claude Code  ──HTTP──►  127.0.0.1:8765/mcp   ──►  FastMCP tools
+  Claude Code ──►  127.0.0.1:8765/mcp  ──►  FastMCP tools ─┐
+                                                           │
+  Browser ──►  127.0.0.1:3000  ──►  app (Next.js) ──────────┤
+                                       │   │               │
+                    graph structure ───┘   └── source text │
+                           │                      │        │
+                           ▼                      ▼        ▼
+                     ┌───────────┐        ┌──────────────────────┐
+                     │ postgres  │◄───────│ indexer/resolver/    │
+                     │ (graph)   │        │ queries + /api/file  │
+                     └───────────┘        └──────────────────────┘
                                                      │
-  Browser      ──HTTP──►  127.0.0.1:8765/     ──►  visualizer + /api/*
-                                                     │
-                                    ┌────────────────┼─────────────────┐
-                                    ▼                ▼                 ▼
-                                 indexer          resolver          queries
-                                    │                │                 │
-                                    └──────►  SQLite graph.db  ◄────────┘
-                                             (host ./data, WAL)
+                     /workspaces (repos, read-only) ─┘
 
-  /workspaces  (host repos parent, mounted read-only)  ──►  parsed on demand
+  Vercel ──HTTPS──►  ngrok  ──►  code-graph-mcp   (source previews; and the
+                                                  graph too, until Supabase)
 ```
+
+**The split that shapes everything:** graph *structure* lives in Postgres and
+can be read from anywhere. Source *text* is never stored — it is read fresh
+from `/workspaces`, which exists only on your machine. That is why a hosted app
+still needs the tunnel, and why moving the database to Supabase
+([docs/SUPABASE.md](docs/SUPABASE.md)) speeds up browsing but cannot remove the
+container.
 
 Source layout:
 
@@ -107,10 +121,17 @@ src/code_graph/
   indexer.py             walk + per-file pipeline + batched commits + incremental reindex
   resolver.py            graduated call-resolution cascade
   queries.py             read-side graph queries backing the tools + previews
-  graph_export.py        the visualizer's {nodes, links, repos, stats} payload
-  web.py                 HTTP routes serving the visualizer and its previews
+  graph_export.py        the {nodes, links, repos, stats} graph payload
+  web.py                 HTTP routes + the token gate on the whole service
   server.py              FastMCP app + tool definitions (workspaces trust boundary)
   __main__.py            `python -m code_graph`
+
+frontend/                the Next.js app — runs in the stack, deploys to Vercel
+  app/api/               graph (Postgres) + readme/file/node (proxied to MCP)
+  components/            Explorer shell, graph canvas, preview panel
+  lib/db.ts              read-side graph queries, straight against Postgres
+  lib/mcp.ts             authenticated calls to the code-graph container
+  lib/render.js          markdown + syntax highlighting (shared with visualizer/)
 ```
 
 ---
@@ -122,20 +143,37 @@ with Docker inside WSL2; the Windows-side `127.0.0.1:8765` is reachable through
 WSL localhost forwarding.)
 
 ```bash
-# 1. Point the workspaces mount at the parent dir holding your repos.
+# 1. Fill in .env — it will not start without the required values.
 cp .env.example .env
-#   edit .env: REPOS_HOST_PATH=/mnt/f        (or /home/you/src, etc.)
+#   REPOS_HOST_PATH    the parent dir holding your repos (/mnt/f, ...)
+#   POSTGRES_PASSWORD  anything
+#   CODE_GRAPH_TOKEN   openssl rand -hex 32
+#   NGROK_AUTHTOKEN    only if you want the tunnel
 
-# 2. Build and start the standing service.
+# 2. Build and start the stack.
 docker compose up -d
 
 # 3. Check it's healthy.
-docker compose ps          # STATUS should show "Up (healthy)"
-docker compose logs        # "Uvicorn running on http://0.0.0.0:8765"
+docker compose ps          # postgres/mcp/app "Up (healthy)"
+docker compose logs -f app
 ```
 
-`GRAPH_DB_PATH` and `WORKSPACES_ROOT` are already wired in `docker-compose.yml`;
-you normally only set `REPOS_HOST_PATH`.
+Four services come up:
+
+| Service | Where | What it is |
+|---|---|---|
+| `postgres` | `127.0.0.1:5432` | the graph. Never tunnelled. |
+| `code-graph-mcp` | `127.0.0.1:8765` | indexer, MCP tools, source reads |
+| `app` | `127.0.0.1:3000` | the UI — same code that deploys to Vercel |
+| `ngrok` | `127.0.0.1:4040` | public URL for `code-graph-mcp` only |
+
+Compose **refuses to start** without `POSTGRES_PASSWORD` and
+`CODE_GRAPH_TOKEN`. That is deliberate: the tunnel makes `/api/file` — which
+reads out of `REPOS_HOST_PATH` — reachable from the internet, and the token is
+the only thing in front of it.
+
+Don't want the tunnel? `docker compose up -d postgres code-graph-mcp app`
+leaves ngrok out, and nothing is exposed beyond loopback.
 
 ### Wire it to Claude Code
 
@@ -160,6 +198,27 @@ index_repository(name="my-service", path="path/relative/to/workspaces")
 get_callers(qualified_name="pkg.module.function")
 trace_call_path(qualified_name="pkg.module.function", direction="callers", depth=3)
 ```
+
+### Deploying the app to Vercel
+
+The app in `frontend/` is the same code the `app` service runs. Point a Vercel
+project at this repository with **Root Directory = `frontend`**, then set:
+
+| Variable | Value |
+|---|---|
+| `MCP_BASE_URL` | your ngrok URL, e.g. `https://your-name.ngrok.app` |
+| `CODE_GRAPH_TOKEN` | the same token as in `.env` |
+| `GRAPH_SOURCE` | `mcp` until the database is hosted, then `postgres` |
+| `DATABASE_URL` | only once the graph is in Supabase — see below |
+
+With `GRAPH_SOURCE=mcp` the deployment needs no database at all: structure and
+source both come through the tunnel, so it works the moment ngrok is up. Once
+the graph moves to Supabase ([docs/SUPABASE.md](docs/SUPABASE.md)), switch to
+`postgres` and browsing no longer depends on your machine being awake —
+only source previews do.
+
+The token never reaches the browser: it is used server-side, in the app's own
+route handlers.
 
 ---
 
@@ -270,7 +329,7 @@ The indexing pipeline is designed to stay well under the cap, not to rely on it:
 - One file at a time: parse → extract → buffer rows → **discard the tree** → next.
 - Batched commits (every 200 files); buffers hold plain tuples, not tree refs.
 - The file tree is walked with an `os.walk` generator — never fully materialized.
-- The cross-file registry is plain indexed SQLite lookups, not cached ASTs.
+- The cross-file registry is plain indexed Postgres lookups, not cached ASTs.
 - `reindex_repository` is explicit and on-demand — no background watcher threads.
 
 Measure it yourself:
@@ -313,6 +372,11 @@ Nothing else in the pipeline needs to change. Two knobs cover the awkward cases:
 
 - **Loopback only.** Compose publishes `127.0.0.1:8765:8765`; the service is
   reachable from this machine and nowhere else.
+- **Token on everything.** `/mcp`, `/` and `/api/*` all require
+  `Authorization: Bearer $CODE_GRAPH_TOKEN` (or `X-Code-Graph-Token`), compared
+  in constant time. Only `/healthz` is open, and it reports nothing but
+  `{"status":"ok"}`. This is what makes the ngrok tunnel safe to run; compose
+  will not start the service without a token.
 - **Read-only repos.** `/workspaces` is mounted `:ro`. Repo paths from tool
   arguments are confined to the mount (`safe_join`) — no `../` traversal or
   symlink escapes; symlinks are not followed during the walk.
@@ -325,24 +389,31 @@ Nothing else in the pipeline needs to change. Two knobs cover the awkward cases:
   code through them.
 - **Hardened container.** Unprivileged user, read-only root filesystem,
   `no-new-privileges`, `tmpfs` `/tmp`.
-- **No egress.** No `requests`/`urllib`/`httpx`/`socket` outbound use in the
-  service source. Grammars and SDK are installed at build time from pinned wheels
-  (`requirements.lock.txt`); nothing is fetched at runtime.
+- **No egress from the indexer.** No `requests`/`urllib`/`httpx`/`socket`
+  outbound use in the service source. Grammars and SDK are installed at build
+  time from pinned wheels (`requirements.lock.txt`); nothing is fetched at
+  runtime. The app self-hosts its fonts at build time and loads no CDN.
+- **The tunnel is opt-in.** `ngrok` is a separate service: leave it out of
+  `docker compose up` and the stack is loopback-only, exactly as before.
 
 ---
 
 ## Data & persistence
 
-`./data/graph.db` is a host bind mount. It survives `docker compose down`,
-rebuilds, and container recreation — restart the service and previously-indexed
-repos are immediately queryable with no re-index. WAL is checkpointed after each
-index so the host sees a single compact `graph.db`. Inspect it directly:
+The graph lives in the `pgdata` named volume. It survives `docker compose
+down` and rebuilds — restart the stack and previously-indexed repos are
+immediately queryable with no re-index. Inspect it directly:
 
 ```bash
-sqlite3 data/graph.db "SELECT name, node_count, edge_count FROM repos;"
+docker compose exec postgres psql -U codegraph -d codegraph \
+  -c "SELECT name, node_count, edge_count FROM repos;"
 ```
 
-To reset the graph, stop the service and delete `data/graph.db*`.
+To reset the graph: `docker compose down -v` (this deletes the volume), or
+`TRUNCATE repos, nodes, edges, files, imports;`.
+
+The graph is **derived data** — it can always be rebuilt by re-indexing, which
+is why the Supabase move re-indexes rather than migrating rows.
 
 ---
 

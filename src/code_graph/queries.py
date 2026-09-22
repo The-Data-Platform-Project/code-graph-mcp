@@ -7,9 +7,10 @@ repo is given they match across all indexed repos (results carry their repo).
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 from typing import Any, Optional
+
+import psycopg
 
 from .config import Config
 from .models import EDGE_CALLS, EDGE_IMPORTS
@@ -23,7 +24,7 @@ _MAX_TRACE_NODES = 500
 _MAX_TRACE_BREADTH = 50
 
 
-def list_repositories(con: sqlite3.Connection) -> list[dict[str, Any]]:
+def list_repositories(con: psycopg.Connection) -> list[dict[str, Any]]:
     rows = con.execute(
         "SELECT name, path, indexed_at, node_count, edge_count, file_count "
         "FROM repos ORDER BY name"
@@ -32,39 +33,42 @@ def list_repositories(con: sqlite3.Connection) -> list[dict[str, Any]]:
 
 
 def search_symbol(
-    con: sqlite3.Connection,
+    con: psycopg.Connection,
     pattern: str,
     repo: Optional[str] = None,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
     like = like_pattern(pattern)
-    placeholders = ",".join("?" * len(_SYMBOL_KINDS))
+    placeholders = ",".join(["%s"] * len(_SYMBOL_KINDS))
+    # ILIKE, not LIKE: SQLite matched case-insensitively for ASCII and the tool
+    # is documented as a substring match, so Postgres' case-sensitive LIKE
+    # would quietly narrow every search.
     sql = (
         "SELECT repo, kind, name, qualified_name, file_path, start_line, signature "
         "FROM nodes WHERE kind IN ({}) "
-        "AND (name LIKE ? ESCAPE '\\' OR qualified_name LIKE ? ESCAPE '\\')"
+        "AND (name ILIKE %s ESCAPE '\\' OR qualified_name ILIKE %s ESCAPE '\\')"
     ).format(placeholders)
     params: list[Any] = [*_SYMBOL_KINDS, like, like]
     if repo:
-        sql += " AND repo = ?"
+        sql += " AND repo = %s"
         params.append(repo)
-    sql += " ORDER BY name LIMIT ?"
+    sql += " ORDER BY name LIMIT %s"
     params.append(limit)
     return [dict(r) for r in con.execute(sql, params).fetchall()]
 
 
 def get_callers(
-    con: sqlite3.Connection, qualified_name: str, repo: Optional[str] = None
+    con: psycopg.Connection, qualified_name: str, repo: Optional[str] = None
 ) -> list[dict[str, Any]]:
     sql = (
         "SELECT n.repo, n.kind, n.qualified_name, n.file_path, n.start_line, "
         "n.signature FROM edges e "
         "JOIN nodes n ON n.repo = e.repo AND n.qualified_name = e.src_qname "
-        "WHERE e.edge_type = ? AND e.dst_qname = ? AND e.resolved = 1"
+        "WHERE e.edge_type = %s AND e.dst_qname = %s AND e.resolved = 1"
     )
     params: list[Any] = [EDGE_CALLS, qualified_name]
     if repo:
-        sql += " AND e.repo = ?"
+        sql += " AND e.repo = %s"
         params.append(repo)
     sql += " ORDER BY n.repo, n.qualified_name"
     seen = set()
@@ -78,17 +82,17 @@ def get_callers(
 
 
 def get_callees(
-    con: sqlite3.Connection, qualified_name: str, repo: Optional[str] = None
+    con: psycopg.Connection, qualified_name: str, repo: Optional[str] = None
 ) -> list[dict[str, Any]]:
     sql = (
         "SELECT e.dst_qname, e.dst_raw, e.resolved, e.repo, "
         "n.kind, n.file_path, n.start_line, n.signature FROM edges e "
         "LEFT JOIN nodes n ON n.repo = e.repo AND n.qualified_name = e.dst_qname "
-        "WHERE e.edge_type = ? AND e.src_qname = ?"
+        "WHERE e.edge_type = %s AND e.src_qname = %s"
     )
     params: list[Any] = [EDGE_CALLS, qualified_name]
     if repo:
-        sql += " AND e.repo = ?"
+        sql += " AND e.repo = %s"
         params.append(repo)
     sql += " ORDER BY e.resolved DESC, e.dst_qname"
     out = []
@@ -114,7 +118,7 @@ def get_callees(
 
 
 def trace_call_path(
-    con: sqlite3.Connection,
+    con: psycopg.Connection,
     qualified_name: str,
     direction: str = "callees",
     depth: int = 3,
@@ -127,14 +131,14 @@ def trace_call_path(
     if direction == "callees":
         sql = (
             "SELECT DISTINCT dst_qname AS nb FROM edges "
-            "WHERE edge_type = ? AND src_qname = ? AND resolved = 1"
+            "WHERE edge_type = %s AND src_qname = %s AND resolved = 1"
         )
     else:
         sql = (
             "SELECT DISTINCT src_qname AS nb FROM edges "
-            "WHERE edge_type = ? AND dst_qname = ? AND resolved = 1"
+            "WHERE edge_type = %s AND dst_qname = %s AND resolved = 1"
         )
-    repo_clause = " AND repo = ?" if repo else ""
+    repo_clause = " AND repo = %s" if repo else ""
 
     visited: set[str] = {qualified_name}
     total = [0]
@@ -179,18 +183,18 @@ def trace_call_path(
 
 
 def get_dependencies(
-    con: sqlite3.Connection, file_path: str, repo: Optional[str] = None
+    con: psycopg.Connection, file_path: str, repo: Optional[str] = None
 ) -> list[dict[str, Any]]:
     file_path = file_path.replace("\\", "/")
     sql = (
         "SELECT i.repo, i.local_name, i.target, i.kind, "
         "EXISTS(SELECT 1 FROM nodes n WHERE n.repo = i.repo "
         "AND n.qualified_name = i.target) AS in_project "
-        "FROM imports i WHERE i.file_path = ?"
+        "FROM imports i WHERE i.file_path = %s"
     )
     params: list[Any] = [file_path]
     if repo:
-        sql += " AND i.repo = ?"
+        sql += " AND i.repo = %s"
         params.append(repo)
     sql += " ORDER BY i.repo, i.target"
     return [
@@ -206,15 +210,15 @@ def get_dependencies(
 
 
 def find_node(
-    con: sqlite3.Connection, qualified_name: str, repo: Optional[str] = None
-) -> Optional[sqlite3.Row]:
+    con: psycopg.Connection, qualified_name: str, repo: Optional[str] = None
+) -> Optional[dict[str, Any]]:
     sql = (
         "SELECT repo, kind, name, qualified_name, file_path, start_line, end_line, "
-        "signature FROM nodes WHERE qualified_name = ?"
+        "signature FROM nodes WHERE qualified_name = %s"
     )
     params: list[Any] = [qualified_name]
     if repo:
-        sql += " AND repo = ?"
+        sql += " AND repo = %s"
         params.append(repo)
     # Prefer a concrete definition over a File node when names collide.
     sql += " ORDER BY CASE kind WHEN 'File' THEN 1 ELSE 0 END LIMIT 1"
@@ -222,7 +226,7 @@ def find_node(
 
 
 def get_code_snippet(
-    con: sqlite3.Connection,
+    con: psycopg.Connection,
     config: Config,
     qualified_name: str,
     repo: Optional[str] = None,
@@ -231,7 +235,7 @@ def get_code_snippet(
     if node is None:
         return {"error": f"no node named {qualified_name!r}", "found": False}
     repo_row = con.execute(
-        "SELECT path FROM repos WHERE name = ?", (node["repo"],)
+        "SELECT path FROM repos WHERE name = %s", (node["repo"],)
     ).fetchone()
     if repo_row is None:
         return {"error": f"repo {node['repo']!r} not registered", "found": False}
@@ -276,8 +280,8 @@ _MAX_SOURCE_BYTES = 1_000_000
 _README_RANK = {".md": 0, ".markdown": 1, ".rst": 2, ".txt": 3, "": 4}
 
 
-def _repo_rel_path(con: sqlite3.Connection, repo: str) -> Optional[str]:
-    row = con.execute("SELECT path FROM repos WHERE name = ?", (repo,)).fetchone()
+def _repo_rel_path(con: psycopg.Connection, repo: str) -> Optional[str]:
+    row = con.execute("SELECT path FROM repos WHERE name = %s", (repo,)).fetchone()
     return row["path"] if row is not None else None
 
 
@@ -312,7 +316,7 @@ def _read_text_capped(path: Path, max_bytes: Optional[int] = None) -> dict[str, 
 
 
 def get_repo_readme(
-    con: sqlite3.Connection, config: Config, repo: str
+    con: psycopg.Connection, config: Config, repo: str
 ) -> dict[str, Any]:
     """Return the README at the root of `repo`, read fresh from disk."""
     rel = _repo_rel_path(con, repo)
@@ -343,7 +347,7 @@ def get_repo_readme(
 
 
 def get_file_source(
-    con: sqlite3.Connection,
+    con: psycopg.Connection,
     config: Config,
     repo: str,
     file_path: str,
@@ -371,7 +375,7 @@ def get_file_source(
 
 
 def get_dependents(
-    con: sqlite3.Connection, repo: str, file_path: str
+    con: psycopg.Connection, repo: str, file_path: str
 ) -> list[dict[str, Any]]:
     """Return the files importing anything defined in `file_path`.
 
@@ -383,8 +387,8 @@ def get_dependents(
     rows = con.execute(
         "SELECT DISTINCT e.src_file, e.dst_qname FROM edges e "
         "JOIN nodes n ON n.repo = e.repo AND n.qualified_name = e.dst_qname "
-        "WHERE e.edge_type = ? AND e.resolved = 1 AND e.repo = ? "
-        "AND n.file_path = ? AND e.src_file != ? "
+        "WHERE e.edge_type = %s AND e.resolved = 1 AND e.repo = %s "
+        "AND n.file_path = %s AND e.src_file != %s "
         "ORDER BY e.src_file LIMIT 200",
         (EDGE_IMPORTS, repo, file_path, file_path),
     ).fetchall()
@@ -395,12 +399,12 @@ def get_dependents(
 
 
 def get_file_symbols(
-    con: sqlite3.Connection, repo: str, file_path: str, exclude: Optional[str] = None
+    con: psycopg.Connection, repo: str, file_path: str, exclude: Optional[str] = None
 ) -> list[dict[str, Any]]:
     """Return the symbols defined in one file, for 'what else lives here' context."""
     rows = con.execute(
         "SELECT kind, name, qualified_name, start_line, signature FROM nodes "
-        "WHERE repo = ? AND file_path = ? AND kind != 'File' "
+        "WHERE repo = %s AND file_path = %s AND kind != 'File' "
         "ORDER BY start_line LIMIT 200",
         (repo, file_path),
     ).fetchall()
@@ -408,7 +412,7 @@ def get_file_symbols(
 
 
 def get_node_context(
-    con: sqlite3.Connection,
+    con: psycopg.Connection,
     config: Config,
     qualified_name: str,
     repo: Optional[str] = None,

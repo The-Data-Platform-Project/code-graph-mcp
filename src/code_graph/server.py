@@ -1,8 +1,10 @@
 """FastMCP server exposing the code graph over streamable HTTP.
 
 Transport: streamable HTTP, mounted at `/mcp` (FastMCP's default). The container
-binds 0.0.0.0:8765 internally; docker-compose publishes it only to the host's
-127.0.0.1, so the service is reachable from this machine and nowhere else.
+binds 0.0.0.0:8765 internally; docker-compose publishes it to the host's
+127.0.0.1 and, when the tunnel is running, to ngrok. Because it is now
+reachable from outside the machine, `main()` wraps the whole ASGI app in
+`TokenAuthMiddleware` — see web.py.
 
 This module is the trust boundary for the read-only workspaces mount: repo paths
 from tool arguments are confined to WORKSPACES_ROOT via `safe_join` before any
@@ -39,7 +41,7 @@ mcp = FastMCP(
 
 
 def _conn():
-    return db.connect(_CONFIG.db_path)
+    return db.connect(_CONFIG.database_url)
 
 
 def _normalize_rel(path: str) -> str:
@@ -77,7 +79,7 @@ def reindex_repository(name: str) -> dict[str, Any]:
     """
     con = _conn()
     try:
-        row = con.execute("SELECT path FROM repos WHERE name = ?", (name,)).fetchone()
+        row = con.execute("SELECT path FROM repos WHERE name = %s", (name,)).fetchone()
     finally:
         con.close()
     if row is None:
@@ -230,7 +232,15 @@ def _result_dict(result) -> dict[str, Any]:
 def main() -> None:
     # Touch the DB so the schema exists before the first tool call.
     _conn().close()
-    mcp.run(transport="streamable-http")
+
+    # Built here rather than via `mcp.run()` so the token gate can wrap the
+    # finished app: /mcp is a mount, so it cannot be protected route by route.
+    import uvicorn
+
+    app = web.TokenAuthMiddleware(
+        mcp.streamable_http_app(), token=_CONFIG.auth_token
+    )
+    uvicorn.run(app, host=_CONFIG.host, port=_CONFIG.port, log_level="info")
 
 
 if __name__ == "__main__":

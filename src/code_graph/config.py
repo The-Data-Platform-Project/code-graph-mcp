@@ -24,9 +24,9 @@ def _int_env(name: str, default: int) -> int:
 
 @dataclass(frozen=True)
 class Config:
-    # Where the SQLite graph lives. On the container this is /data/graph.db,
-    # which is a host bind mount so the graph survives rebuilds.
-    db_path: Path
+    # Postgres connection string for the graph. Compose points this at the
+    # `postgres` service; in production it is the hosted database (Supabase).
+    database_url: str
     # Parent directory holding every indexable repo. Mounted read-only on the
     # container as /workspaces. `index_repository` paths are relative to this.
     workspaces_root: Path
@@ -37,22 +37,30 @@ class Config:
     # Files larger than this are skipped during indexing. Guards against a
     # single generated/minified file blowing the memory budget.
     max_file_bytes: int
-    # How many files to parse before flushing a batch to SQLite. Bounds peak
+    # How many files to parse before flushing a batch to Postgres. Bounds peak
     # memory: parse trees are discarded per file, and pending rows per batch.
     commit_batch_files: int
     # Directory holding the visualizer's index.html, served from `/` on the
     # same origin as the API so previews need no CORS relaxation. Defaults to
     # the checkout's ./visualizer; the image sets it to /app/visualizer.
     visualizer_dir: Path = Path("./visualizer")
+    # Shared secret required by every /mcp and /api request once the service is
+    # reachable beyond loopback (see web.py). Empty disables the check, which is
+    # only safe for a purely local, untunnelled run.
+    auth_token: str = ""
 
     @staticmethod
     def from_env() -> "Config":
         return Config(
-            db_path=Path(os.environ.get("GRAPH_DB_PATH", "./data/graph.db")),
+            database_url=os.environ.get(
+                "DATABASE_URL",
+                "postgresql://codegraph:codegraph@127.0.0.1:5432/codegraph",
+            ),
             workspaces_root=Path(os.environ.get("WORKSPACES_ROOT", "./workspaces")),
             host=os.environ.get("MCP_HOST", "127.0.0.1"),
             port=_int_env("MCP_PORT", 8765),
             max_file_bytes=_int_env("MAX_FILE_BYTES", 1_500_000),
             commit_batch_files=_int_env("COMMIT_BATCH_FILES", 200),
             visualizer_dir=Path(os.environ.get("VISUALIZER_DIR", "./visualizer")),
+            auth_token=os.environ.get("CODE_GRAPH_TOKEN", "").strip(),
         )

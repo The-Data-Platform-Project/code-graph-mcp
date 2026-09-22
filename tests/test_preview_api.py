@@ -26,7 +26,7 @@ A **sample** repo with [a link](https://example.com).
 
 @pytest.fixture
 def client(indexed):
-    specs = web.route_specs(indexed, lambda: db.connect(indexed.db_path))
+    specs = web.route_specs(indexed, lambda: db.connect(indexed.database_url))
     app = Starlette(
         routes=[
             Route(s.path, s.endpoint, methods=s.methods, name=s.name) for s in specs
@@ -256,7 +256,7 @@ def test_route_index_serves_the_visualizer(client, indexed, tmp_path, monkeypatc
     (page / "index.html").write_text("<!DOCTYPE html><title>Code Graph</title>", "utf-8")
     specs = web.route_specs(
         type(indexed)(**{**indexed.__dict__, "visualizer_dir": page}),
-        lambda: db.connect(indexed.db_path),
+        lambda: db.connect(indexed.database_url),
     )
     app = Starlette(routes=[Route(s.path, s.endpoint, methods=s.methods) for s in specs])
     with TestClient(app) as c:
@@ -269,3 +269,72 @@ def test_routes_send_no_cors_headers(client):
     # Same-origin by design: no other page the browser visits may read these.
     res = client.get("/api/graph")
     assert "access-control-allow-origin" not in {k.lower() for k in res.headers}
+
+
+# ── Token gate ────────────────────────────────────────────────────────────
+# The service is published through a tunnel so the Vercel app can reach it,
+# which makes this the boundary between "my machine" and the internet.
+
+
+def _gated_client(config, token):
+    specs = web.route_specs(config, lambda: db.connect(config.database_url))
+    app = Starlette(
+        routes=[Route(s.path, s.endpoint, methods=s.methods) for s in specs]
+    )
+    return TestClient(web.TokenAuthMiddleware(app, token=token))
+
+
+def test_healthz_needs_no_token(indexed):
+    with _gated_client(indexed, "sekrit") as client:
+        res = client.get("/healthz")
+        assert res.status_code == 200
+        # It must not leak anything about the graph or the repos.
+        assert res.json() == {"status": "ok"}
+
+
+def test_requests_without_a_token_are_refused(indexed):
+    with _gated_client(indexed, "sekrit") as client:
+        for path in ("/", "/api/graph", "/api/node?repo=sample&qname=pkg.core.build"):
+            res = client.get(path)
+            assert res.status_code == 401, path
+            assert res.headers["www-authenticate"] == "Bearer"
+
+
+def test_a_wrong_token_is_refused(indexed):
+    with _gated_client(indexed, "sekrit") as client:
+        assert (
+            client.get(
+                "/api/graph", headers={"Authorization": "Bearer wrong"}
+            ).status_code
+            == 401
+        )
+        # A correct prefix must not pass either.
+        assert (
+            client.get(
+                "/api/graph", headers={"Authorization": "Bearer sek"}
+            ).status_code
+            == 401
+        )
+
+
+def test_the_right_token_passes_either_header(indexed):
+    with _gated_client(indexed, "sekrit") as client:
+        assert (
+            client.get(
+                "/api/graph", headers={"Authorization": "Bearer sekrit"}
+            ).status_code
+            == 200
+        )
+        assert (
+            client.get(
+                "/api/graph", headers={"X-Code-Graph-Token": "sekrit"}
+            ).status_code
+            == 200
+        )
+
+
+def test_an_empty_token_leaves_the_service_open(indexed):
+    # Supported for a purely local run; compose refuses to start without a
+    # token precisely because this mode must never meet the tunnel.
+    with _gated_client(indexed, "") as client:
+        assert client.get("/api/graph").status_code == 200

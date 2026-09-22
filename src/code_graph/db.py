@@ -1,4 +1,4 @@
-"""SQLite storage: schema, connection setup, and the two core graph tables.
+"""Postgres storage: schema, connection setup, and the two core graph tables.
 
 Design notes:
 - `nodes` and `edges` are the graph; both are indexed on qualified name (nodes on
@@ -8,14 +8,19 @@ Design notes:
   listing, content-hash incremental reindex, and call resolution respectively.
 - The DB stores *structure only* — never source text. `get_code_snippet` reads
   fresh from disk.
-- WAL mode with `synchronous=NORMAL`: durable enough for a derived cache, fast to
-  write, and allows the host to read `graph.db` while the service runs.
+- Rows come back as dicts (`dict_row`), so every query in this package accesses
+  columns by name.
+
+Postgres rather than SQLite because the graph is now read directly by the
+Next.js app — locally over the compose network, and in production by Vercel
+against a hosted database (see docs/SUPABASE.md). A file-backed SQLite graph
+cannot be reached from either.
 """
 
 from __future__ import annotations
 
-import sqlite3
-from pathlib import Path
+import psycopg
+from psycopg.rows import dict_row
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS repos (
@@ -28,7 +33,7 @@ CREATE TABLE IF NOT EXISTS repos (
 );
 
 CREATE TABLE IF NOT EXISTS nodes (
-    id             INTEGER PRIMARY KEY,
+    id             BIGSERIAL PRIMARY KEY,
     repo           TEXT NOT NULL,
     kind           TEXT NOT NULL,
     name           TEXT NOT NULL,
@@ -40,7 +45,7 @@ CREATE TABLE IF NOT EXISTS nodes (
 );
 
 CREATE TABLE IF NOT EXISTS edges (
-    id         INTEGER PRIMARY KEY,
+    id         BIGSERIAL PRIMARY KEY,
     repo       TEXT NOT NULL,
     edge_type  TEXT NOT NULL,
     src_qname  TEXT NOT NULL,
@@ -79,31 +84,40 @@ CREATE INDEX IF NOT EXISTS idx_edges_srcfile    ON edges(repo, src_file);
 CREATE INDEX IF NOT EXISTS idx_imports_file ON imports(repo, file_path);
 """
 
+# An arbitrary but fixed key, so concurrent starters serialize their DDL
+# instead of racing `CREATE TABLE IF NOT EXISTS` against each other.
+_SCHEMA_LOCK_KEY = 0x6367_0001
 
-def connect(db_path: Path) -> sqlite3.Connection:
-    """Open (creating parent dirs and schema if needed) a configured connection.
+# DSNs whose schema this process has already ensured. SQLite re-ran its DDL on
+# every connect for free; in Postgres that is a catalog round trip per tool
+# call, so it is done once per process per DSN instead.
+_ready: set[str] = set()
 
-    Each call returns an independent connection; callers close it. This keeps
-    every connection bound to the thread that opened it, which is what
-    `sqlite3`'s default same-thread checking wants when tools run in a
-    thread pool.
+
+def connect(dsn: str) -> psycopg.Connection:
+    """Open a configured connection, creating the schema on first use.
+
+    Each call returns an independent connection; callers close it.
     """
-    db_path = Path(db_path)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(str(db_path), timeout=30.0)
-    con.row_factory = sqlite3.Row
-    con.execute("PRAGMA journal_mode=WAL")
-    con.execute("PRAGMA synchronous=NORMAL")
-    con.execute("PRAGMA busy_timeout=5000")
-    con.execute("PRAGMA temp_store=MEMORY")
-    con.executescript(_SCHEMA)
+    con = psycopg.connect(dsn, row_factory=dict_row)
+    if dsn not in _ready:
+        try:
+            init_schema(con)
+        except Exception:
+            con.close()
+            raise
+        _ready.add(dsn)
     return con
 
 
-def checkpoint(con: sqlite3.Connection) -> None:
-    """Fold the WAL back into the main DB file and truncate it.
+def init_schema(con: psycopg.Connection) -> None:
+    """Create the tables and indexes if they are not already present."""
+    with con.cursor() as cur:
+        cur.execute("SELECT pg_advisory_xact_lock(%s)", (_SCHEMA_LOCK_KEY,))
+        cur.execute(_SCHEMA)
+    con.commit()
 
-    Run after a large index so the host sees a compact, self-contained
-    graph.db rather than a fat -wal sidecar.
-    """
-    con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+def reset_schema_cache() -> None:
+    """Forget which DSNs have been initialized (tests build fresh schemas)."""
+    _ready.clear()

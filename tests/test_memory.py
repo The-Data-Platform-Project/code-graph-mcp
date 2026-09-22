@@ -28,14 +28,14 @@ def _peak_rss_mb() -> float:
     return ru / divisor
 
 
-def test_indexing_stdlib_stays_under_ceiling(tmp_path):
+def test_indexing_stdlib_stays_under_ceiling(database_url):
     stdlib = Path(sysconfig.get_path("stdlib"))
     py_files = sum(1 for _ in stdlib.rglob("*.py"))
     if py_files < MIN_FILES:
         pytest.skip(f"stdlib has too few files to be a meaningful test ({py_files})")
 
     config = Config(
-        db_path=tmp_path / "mem.db",
+        database_url=database_url,
         workspaces_root=stdlib.parent,
         host="127.0.0.1",
         port=8765,

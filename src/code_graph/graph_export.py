@@ -10,14 +10,14 @@ cannot crowd every other one out of the picture.
 
 from __future__ import annotations
 
-import sqlite3
+import psycopg
 from typing import Any
 
 MAX_NODES_PER_REPO = 3000
 
 
 def build_payload(
-    con: sqlite3.Connection, max_nodes_per_repo: int = MAX_NODES_PER_REPO
+    con: psycopg.Connection, max_nodes_per_repo: int = MAX_NODES_PER_REPO
 ) -> dict[str, Any]:
     """Return the {nodes, links, repos, stats} payload the visualizer consumes."""
     repos = [
@@ -28,7 +28,8 @@ def build_payload(
     for repo in repos:
         rows = con.execute(
             "SELECT repo, kind, name, qualified_name, file_path, start_line, "
-            "end_line, signature FROM nodes WHERE repo = ? ORDER BY kind, name LIMIT ?",
+            "end_line, signature FROM nodes WHERE repo = %s "
+            "ORDER BY kind, name LIMIT %s",
             (repo["name"], max_nodes_per_repo),
         ).fetchall()
         nodes.extend(

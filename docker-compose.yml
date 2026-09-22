@@ -1,11 +1,51 @@
-# Standalone compose project for the code-graph MCP service. Unrelated to any
-# other Docker network/project on this machine.
+# Standalone compose project for the code-graph stack. Unrelated to any other
+# Docker network/project on this machine.
+#
+#   postgres        the graph itself (structure only, never source text)
+#   code-graph-mcp  indexer + MCP tools + source-file reads from /workspaces
+#   app             the Next.js UI — the same code that deploys to Vercel
+#   ngrok           a public URL for code-graph-mcp, so a Vercel deployment can
+#                   reach this machine
+#
+# Only code-graph-mcp is tunnelled, and only because source text lives on this
+# machine and nowhere else. Postgres is never published to the internet — when
+# the hosted app needs the graph directly, that is what Supabase is for
+# (docs/SUPABASE.md).
+
+name: code-graph
+
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: code-graph-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-codegraph}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      - POSTGRES_DB=${POSTGRES_DB:-codegraph}
+    volumes:
+      # Named volume, not a bind mount: Postgres needs Linux file ownership
+      # that a Windows-hosted bind mount cannot provide.
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # Loopback only, for psql and one-off inspection from the host.
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-codegraph} -d ${POSTGRES_DB:-codegraph}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    mem_limit: "512m"
+
   code-graph-mcp:
     build: .
     image: code-graph-mcp:latest
     container_name: code-graph-mcp
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
 
     # --- hard memory backstop (design target is well under this) ---
     mem_limit: "500m"
@@ -18,18 +58,67 @@ services:
     security_opt:
       - no-new-privileges:true
 
-    # Loopback-only: reachable from this machine, nowhere else.
     ports:
+      # Loopback for Claude Code and the local app; the internet reaches this
+      # service only through the ngrok container below.
       - "127.0.0.1:8765:8765"
 
     volumes:
-      # SQLite graph on a host bind mount -> survives `down`/rebuild, inspectable.
-      - ./data:/data
       # Parent dir of every indexable repo, mounted read-only.
       - ${REPOS_HOST_PATH}:/workspaces:ro
 
     environment:
-      - GRAPH_DB_PATH=/data/graph.db
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-codegraph}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-codegraph}
       - WORKSPACES_ROOT=/workspaces
       - MCP_HOST=0.0.0.0
       - MCP_PORT=8765
+      # Required: this service is reachable through the tunnel, and /api/file
+      # serves files from the workspaces mount. Refusing to start without a
+      # token is deliberate.
+      - CODE_GRAPH_TOKEN=${CODE_GRAPH_TOKEN:?set CODE_GRAPH_TOKEN in .env - the tunnel would otherwise expose /workspaces}
+
+  app:
+    build:
+      context: ./frontend
+    image: code-graph-app:latest
+    container_name: code-graph-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      code-graph-mcp:
+        condition: service_started
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      # Locally the app reads the graph straight from Postgres over the compose
+      # network; only source text goes through the MCP service.
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-codegraph}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-codegraph}
+      - GRAPH_SOURCE=${GRAPH_SOURCE:-postgres}
+      - MCP_BASE_URL=http://code-graph-mcp:8765
+      - CODE_GRAPH_TOKEN=${CODE_GRAPH_TOKEN}
+    mem_limit: "512m"
+
+  ngrok:
+    image: ngrok/ngrok:alpine
+    container_name: code-graph-ngrok
+    restart: unless-stopped
+    depends_on:
+      code-graph-mcp:
+        condition: service_started
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN:?set NGROK_AUTHTOKEN in .env}
+    # One tunnel, pointed at the MCP service only. NGROK_DOMAIN is optional; a
+    # reserved domain keeps the URL stable so Vercel's env does not change on
+    # every restart.
+    command: >
+      http code-graph-mcp:8765
+      --log=stdout
+      ${NGROK_DOMAIN:+--url=${NGROK_DOMAIN}}
+    ports:
+      # ngrok's local inspector: shows the public URL and every request.
+      - "127.0.0.1:4040:4040"
+    mem_limit: "128m"
+
+volumes:
+  pgdata:
