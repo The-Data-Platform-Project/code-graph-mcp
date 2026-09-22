@@ -89,11 +89,22 @@ DATABASE_URL='postgresql://...' python scripts/check_db.py
 
 ### 2. Create the schema
 
-The service creates its own tables on first connect, so the simplest path is to
-point the indexer at Supabase once and let it run. If you would rather apply
-the schema explicitly, it is the `_SCHEMA` constant in
-[`src/code_graph/db.py`](../src/code_graph/db.py) — paste it into the Supabase
-SQL editor.
+```bash
+./scripts/setup_supabase.sh
+```
+
+It prompts for the password (never echoed, never in argv or shell history),
+applies the schema, verifies every table landed, and offers to write
+`DATABASE_URL` into `.env`. Re-running is safe — every statement is
+`CREATE ... IF NOT EXISTS`. The SQL is read out of
+[`src/code_graph/db.py`](../src/code_graph/db.py) rather than copied, so the
+script cannot drift from what the service expects.
+
+Defaults target this project's pooler; override with `--host/--port/--user/--db`
+for any other Postgres.
+
+The service also creates its tables on first connect, so this step is strictly a
+convenience — it just fails loudly and early instead of at first index.
 
 Either way, verify:
 
