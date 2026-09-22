@@ -123,7 +123,7 @@ cleaner than dumping and restoring, and it is fast:
 # in .env, point the stack at Supabase (session pooler, port 5432)
 DATABASE_URL=postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
 
-wsl -e bash -lc "cd '/mnt/f/Code Graph/code-graph-mcp' && docker compose up -d"
+wsl -e bash -lc "cd '/mnt/f/The Data Platform Project/Code Graph/code-graph-mcp' && docker compose up -d"
 # then re-run index_repository for each repo, from Claude Code or scripts/index_one.py
 ```
 

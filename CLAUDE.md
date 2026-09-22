@@ -22,8 +22,8 @@ container.
 Docker is **not** on the Windows host — it runs inside WSL2 (Ubuntu, `ismail`).
 Everything Docker/pytest runs via `wsl -e bash -lc "..."`.
 
-- Project path in WSL: `/mnt/f/Code Graph/code-graph-mcp` (F: → `/mnt/f`).
-- Dev venv (deps + pytest): `~/cgvenv`. Run tests: `cd '/mnt/f/Code Graph/code-graph-mcp' && ~/cgvenv/bin/pytest`.
+- Project path in WSL: `/mnt/f/The Data Platform Project/Code Graph/code-graph-mcp` (F: → `/mnt/f`).
+- Dev venv (deps + pytest): `~/cgvenv`. Run tests: `cd '/mnt/f/The Data Platform Project/Code Graph/code-graph-mcp' && ~/cgvenv/bin/pytest`.
 - Service: `docker compose up -d`; endpoint `http://127.0.0.1:8765/mcp` (reachable from Windows via WSL localhost forwarding). `.mcp.json` wires it to Claude Code.
 - `.env` sets `REPOS_HOST_PATH=/mnt/f`, so the whole drive mounts read-only at `/workspaces`; repos are indexed by path relative to `/mnt/f` (e.g. `index_repository("data-platform", "DataPlatform/data-platform")`).
 - The graph persists in the `pgdata` named volume (Postgres 16) across rebuilds.

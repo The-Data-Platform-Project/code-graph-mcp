@@ -1,0 +1,37 @@
+# Line endings.
+#
+# This repository's scripts run in WSL and in Linux containers, so a CRLF
+# checkout breaks them at the shebang: `/usr/bin/env: 'bash\r': No such file or
+# directory`. Git for Windows defaults to core.autocrlf=true, which does
+# exactly that, so pin LF here — .gitattributes overrides the user's setting.
+* text=auto eol=lf
+
+# Explicit for the files where it actually bites.
+*.sh   text eol=lf
+*.py   text eol=lf
+*.sql  text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.js   text eol=lf
+*.mjs  text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+*.md   text eol=lf
+Dockerfile      text eol=lf
+.env.example    text eol=lf
+.dockerignore   text eol=lf
+.gitignore      text eol=lf
+
+# Never touched.
+*.png  binary
+*.jpg  binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.db   binary
+*.pyc  binary
+*.woff binary
+*.woff2 binary
