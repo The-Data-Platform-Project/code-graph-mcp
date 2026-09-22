@@ -35,19 +35,57 @@ at actual code.
 
 ## Steps
 
-### 1. Create the project and get the connection string
+### 1. Get the connection strings — and avoid the IPv6 trap
 
-In Supabase: **New project**, then **Project Settings → Database → Connection
-string → URI**. You get two forms, and the difference matters:
+In Supabase: **Connect** (top bar) or **Project Settings → Database**. You are
+offered three forms, and picking the wrong one fails in a way that looks like a
+firewall problem.
 
-- **Direct connection** (port `5432`) — a real Postgres connection. Use this
-  for **indexing**, which runs long transactions and batches writes.
-- **Transaction pooler** (port `6543`, host contains `pooler`) — PgBouncer in
-  transaction mode. Use this for **Vercel**, where many short-lived function
-  instances each want a connection.
+**`db.<ref>.supabase.co` is IPv6-only.** Supabase stopped handing out IPv4
+addresses for the direct connection; an IPv4 address is a paid add-on. Docker's
+default bridge network is IPv4-only, so a container that dials the direct host
+gets "network unreachable" or a hang, with nothing in the Supabase logs. Check
+before you debug anything else:
 
-Using the direct port from Vercel will exhaust the connection limit; using the
-pooler for indexing breaks on session-level features. Set both.
+```bash
+getent ahostsv4 db.<ref>.supabase.co   # silence means IPv6-only
+getent ahostsv6 db.<ref>.supabase.co
+```
+
+So use the **pooler** for both jobs. It is IPv4, and it comes in two ports:
+
+| Use | Form | Port | Why |
+|---|---|---|---|
+| Indexing (this stack) | Session pooler | `5432` | A real session: long transactions and batched writes behave normally. |
+| Vercel | Transaction pooler | `6543` | A connection per statement, so many short-lived function instances do not exhaust the limit. |
+
+Both live on `aws-<n>-<region>.pooler.supabase.com` — copy the exact host from
+the dashboard, since the region is part of it.
+
+**The username differs.** Direct connections use `postgres`; pooler connections
+use `postgres.<project-ref>`. Getting this wrong gives an authentication
+failure that reads like a wrong password:
+
+```
+# direct  (IPv6 only — usually unreachable from Docker)
+postgresql://postgres:<pw>@db.<ref>.supabase.co:5432/postgres
+
+# session pooler — use this for indexing
+postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:5432/postgres
+
+# transaction pooler — use this on Vercel
+postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:6543/postgres
+```
+
+Append `?sslmode=require` to each. If your password contains `@`, `:`, `/` or
+`#`, percent-encode it or the URI will parse wrongly.
+
+Check the connection before changing anything else — it names the specific
+failure rather than hanging:
+
+```bash
+DATABASE_URL='postgresql://...' python scripts/check_db.py
+```
 
 ### 2. Create the schema
 
@@ -71,8 +109,8 @@ The graph is derived data — there is nothing to migrate. Re-indexing is
 cleaner than dumping and restoring, and it is fast:
 
 ```bash
-# in .env, point the stack at Supabase (direct connection, port 5432)
-DATABASE_URL=postgresql://postgres:<password>@db.<ref>.supabase.co:5432/postgres
+# in .env, point the stack at Supabase (session pooler, port 5432)
+DATABASE_URL=postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
 
 wsl -e bash -lc "cd '/mnt/f/Code Graph/code-graph-mcp' && docker compose up -d"
 # then re-run index_repository for each repo, from Claude Code or scripts/index_one.py
@@ -83,7 +121,7 @@ If you would rather move the rows than re-parse them:
 ```bash
 pg_dump --no-owner --no-acl \
   "postgresql://codegraph:<pw>@127.0.0.1:5432/codegraph" \
-  | psql "postgresql://postgres:<password>@db.<ref>.supabase.co:5432/postgres"
+  | psql "postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres"
 ```
 
 ### 4. Point the app at it
@@ -91,7 +129,7 @@ pg_dump --no-owner --no-acl \
 **Local compose** — in `.env`:
 
 ```bash
-DATABASE_URL=postgresql://postgres:<password>@db.<ref>.supabase.co:5432/postgres
+DATABASE_URL=postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
 ```
 
 and drop the `postgres` service from `docker-compose.yml` (or leave it running
@@ -101,7 +139,7 @@ and unused; it costs a little memory and nothing else).
 
 | Variable | Value |
 |---|---|
-| `DATABASE_URL` | the **pooler** URI (port `6543`), plus `?sslmode=require` |
+| `DATABASE_URL` | the **transaction pooler** URI (port `6543`, user `postgres.<ref>`), plus `?sslmode=require` |
 | `GRAPH_SOURCE` | `postgres` |
 | `MCP_BASE_URL` | your ngrok URL — still needed for source previews |
 | `CODE_GRAPH_TOKEN` | the same token as in `.env` |
