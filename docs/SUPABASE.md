@@ -90,7 +90,7 @@ DATABASE_URL='postgresql://...' python scripts/check_db.py
 ### 2. Create the schema
 
 ```bash
-./scripts/setup_supabase.sh
+./scripts/setup_db.sh --supabase
 ```
 
 It prompts for the password (never echoed, never in argv or shell history),
@@ -100,8 +100,8 @@ applies the schema, verifies every table landed, and offers to write
 [`src/code_graph/db.py`](../src/code_graph/db.py) rather than copied, so the
 script cannot drift from what the service expects.
 
-Defaults target this project's pooler; override with `--host/--port/--user/--db`
-for any other Postgres.
+`--docker` targets the local compose container instead; `--host/--port/--user/--db`
+reach any other Postgres.
 
 The service also creates its tables on first connect, so this step is strictly a
 convenience — it just fails loudly and early instead of at first index.

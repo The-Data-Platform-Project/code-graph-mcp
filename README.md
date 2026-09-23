@@ -153,7 +153,11 @@ cp .env.example .env
 # 2. Build and start the stack.
 docker compose up -d
 
-# 3. Check it's healthy.
+# 3. Create the graph schema in the Postgres container (optional — the
+#    service also creates it on first connect, this just fails early).
+./scripts/setup_db.sh --docker
+
+# 4. Check it's healthy.
 docker compose ps          # postgres/mcp/app "Up (healthy)"
 docker compose logs -f app
 ```

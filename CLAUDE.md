@@ -32,6 +32,10 @@ Everything Docker/pytest runs via `wsl -e bash -lc "..."`.
   `ngrok` (4040 inspector). Compose refuses to start without `POSTGRES_PASSWORD`
   and `CODE_GRAPH_TOKEN`.
 - Tests need a Postgres: `TEST_DATABASE_URL` (each test gets its own schema).
+- `scripts/setup_db.sh --docker` creates the schema in the compose container
+  (no password — `docker exec psql` uses the container's trusted local socket);
+  `--supabase` or `--host/--user/--db` for a remote one. `scripts/check_db.py`
+  diagnoses a connection (IPv6-only host, pooler username, missing schema).
 - Browser UI: `http://127.0.0.1:3000/` — the Next.js app (`frontend/`). The
   container also still serves the standalone `visualizer/index.html` at
   `http://127.0.0.1:8765/` as a zero-dependency fallback; the two share
