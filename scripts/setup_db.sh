@@ -126,6 +126,20 @@ if [[ "$MODE" == "docker" ]]; then
     exit 1
   fi
 
+  # Guard the identifier: it is interpolated into SQL below.
+  case "$DB" in
+    *[!A-Za-z0-9_]*|"") echo "  invalid database name: ${DB}" >&2; exit 1 ;;
+  esac
+
+  # The container may be one you already run for something else, with no
+  # code-graph database in it yet.
+  if ! docker exec -i "$CONTAINER" psql -U "$USER" -d postgres -tAc \
+        "SELECT 1 FROM pg_database WHERE datname = '${DB}'" | grep -qx 1; then
+    echo "  database '${DB}' does not exist in ${CONTAINER} — creating it"
+    docker exec -i "$CONTAINER" psql -U "$USER" -d postgres -q \
+      -c "CREATE DATABASE ${DB}"
+  fi
+
   # No password: the official postgres image trusts connections over the
   # container's own unix socket, which is what `docker exec psql` uses.
   echo "  applying schema..."

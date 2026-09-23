@@ -33,7 +33,9 @@ Everything Docker/pytest runs via `wsl -e bash -lc "..."`.
   and `CODE_GRAPH_TOKEN`.
 - Tests need a Postgres: `TEST_DATABASE_URL` (each test gets its own schema).
 - `scripts/setup_db.sh --docker` creates the schema in the compose container
-  (no password — `docker exec psql` uses the container's trusted local socket);
+  (no password — `docker exec psql` uses the container's trusted local socket),
+  creating the database first if it is not there, so an existing Postgres
+  container from another project can host the graph (`--container NAME`);
   `--supabase` or `--host/--user/--db` for a remote one. `scripts/check_db.py`
   diagnoses a connection (IPv6-only host, pooler username, missing schema).
 - `scripts/push_to_supabase.sh` copies the local graph up, running `pg_dump |
