@@ -127,7 +127,25 @@ wsl -e bash -lc "cd '/mnt/f/The Data Platform Project/Code Graph/code-graph-mcp'
 # then re-run index_repository for each repo, from Claude Code or scripts/index_one.py
 ```
 
-If you would rather move the rows than re-parse them:
+If you would rather move the rows than re-parse them, and you only have the
+Postgres client tools inside the container:
+
+```bash
+./scripts/push_to_supabase.sh
+```
+
+Everything runs inside the `postgres` container — `pg_dump` piped straight into
+`psql` against Supabase — so the host needs no Postgres client at all. The
+password goes in over stdin, never in argv.
+
+It **replaces** the five graph tables on the target: `nodes` and `edges` are
+keyed on a serial id rather than on qualified name, so appending a second copy
+would duplicate every node instead of updating it. It also fast-forwards the id
+sequences afterwards, which a plain data-only restore leaves at 1, and verifies
+that every table's row count matches before reporting success. If it cannot
+connect, it fails before the truncate, leaving the target untouched.
+
+Or by hand, if you prefer:
 
 ```bash
 pg_dump --no-owner --no-acl \

@@ -36,6 +36,11 @@ Everything Docker/pytest runs via `wsl -e bash -lc "..."`.
   (no password — `docker exec psql` uses the container's trusted local socket);
   `--supabase` or `--host/--user/--db` for a remote one. `scripts/check_db.py`
   diagnoses a connection (IPv6-only host, pooler username, missing schema).
+- `scripts/push_to_supabase.sh` copies the local graph up, running `pg_dump |
+  psql` entirely inside the container (the host needs no Postgres client). It
+  truncates the five tables on the target first — `nodes`/`edges` key on a
+  serial id, so appending would duplicate the graph — then resets the id
+  sequences and verifies row counts.
 - Browser UI: `http://127.0.0.1:3000/` — the Next.js app (`frontend/`). The
   container also still serves the standalone `visualizer/index.html` at
   `http://127.0.0.1:8765/` as a zero-dependency fallback; the two share
