@@ -138,12 +138,20 @@ Everything runs inside the `postgres` container — `pg_dump` piped straight int
 `psql` against Supabase — so the host needs no Postgres client at all. The
 password goes in over stdin, never in argv.
 
+With no `--local-db` it finds the database in that container that actually
+holds the graph tables, rather than assuming a name — and stops with the list
+it found if there is none, or more than one.
+
 It **replaces** the five graph tables on the target: `nodes` and `edges` are
 keyed on a serial id rather than on qualified name, so appending a second copy
-would duplicate every node instead of updating it. It also fast-forwards the id
-sequences afterwards, which a plain data-only restore leaves at 1, and verifies
-that every table's row count matches before reporting success. If it cannot
-connect, it fails before the truncate, leaving the target untouched.
+would duplicate every node instead of updating it. The truncate and the reload
+run in **one transaction**, so a failure part-way leaves the target exactly as
+it was. It refuses outright if the source graph is empty (pass `--allow-empty`
+if wiping the target really is the intent), dumps to a file and checks the exit
+status rather than piping — `sh` has no `pipefail`, so a failing `pg_dump` on
+the left of a pipe looks like success — fast-forwards the id sequences that a
+data-only restore leaves at 1, and compares row counts per table before
+reporting success.
 
 Or by hand, if you prefer:
 
