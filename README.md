@@ -206,7 +206,10 @@ trace_call_path(qualified_name="pkg.module.function", direction="callers", depth
 ### Deploying the app to Vercel
 
 The app in `frontend/` is the same code the `app` service runs. Point a Vercel
-project at this repository with **Root Directory = `frontend`**, then set:
+project at this repository with **Root Directory = `frontend`** — not
+`visualizer/`, which is only the static fallback page and has no API routes, so
+a deployment rooted there renders "No graph data yet" and nothing else. Then
+set:
 
 | Variable | Value |
 |---|---|

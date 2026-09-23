@@ -32,3 +32,7 @@ frontend/.next/
 frontend/out/
 frontend/.vercel
 frontend/*.tsbuildinfo
+
+# Vercel local project linkage — machine-local, and Vercel's own README says
+# not to commit it.
+.vercel/
