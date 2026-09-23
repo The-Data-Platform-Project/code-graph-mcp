@@ -17,8 +17,8 @@
 #
 set -euo pipefail
 
-CONTAINER="code-graph-postgres"
-LOCAL_USER=""
+CONTAINER="data-platform-postgres-1"
+LOCAL_USER="postgres"
 LOCAL_DB=""
 SB_HOST="aws-0-ap-southeast-2.pooler.supabase.com"
 SB_PORT="5432"
