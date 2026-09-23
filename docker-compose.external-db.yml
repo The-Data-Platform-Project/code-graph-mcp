@@ -1,0 +1,31 @@
+# Overlay: keep the graph in a Postgres container you already run for another
+# compose project, instead of this stack's own `postgres` service.
+#
+# Opt in from .env (compose reads COMPOSE_FILE from there):
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.external-db.yml
+#   POSTGRES_HOST=data-platform-postgres-1      # the container's name
+#   EXTERNAL_DB_NETWORK=data-platform_default   # the network it sits on
+#
+# The database and role must exist in that container first — create them with
+# `./scripts/setup_db.sh --docker <container> --create-role`.
+
+services:
+  # Parked behind a profile nobody enables, so it is never started.
+  postgres:
+    profiles: [local-db]
+
+  code-graph-mcp:
+    depends_on: !reset {}
+    networks: [default, external-db]
+
+  app:
+    depends_on: !override
+      code-graph-mcp:
+        condition: service_started
+    networks: [default, external-db]
+
+networks:
+  external-db:
+    name: ${EXTERNAL_DB_NETWORK:?set EXTERNAL_DB_NETWORK in .env - the network the external Postgres is on}
+    external: true

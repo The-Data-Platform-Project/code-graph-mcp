@@ -4,6 +4,10 @@
 # or Supabase.
 #
 #   ./scripts/setup_db.sh --docker          the compose `postgres` service
+#   ./scripts/setup_db.sh --docker NAME --create-role
+#                                           a container you already run for
+#                                           something else: also creates the
+#                                           login role, with POSTGRES_PASSWORD
 #   ./scripts/setup_db.sh --supabase        the project's Supabase pooler
 #   ./scripts/setup_db.sh --host HOST --port 5432 --user U --db D
 #
@@ -23,8 +27,9 @@ USER="${PGUSER:-}"
 DB="${PGDATABASE:-}"
 SSLMODE="${PGSSLMODE:-require}"
 ASSUME_YES=0
+CREATE_ROLE=0
 
-usage() { sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '3,20p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -42,6 +47,7 @@ while [[ $# -gt 0 ]]; do
     --user) USER="$2"; shift 2 ;;
     --db)   DB="$2";   shift 2 ;;
     --sslmode) SSLMODE="$2"; shift 2 ;;
+    --create-role) CREATE_ROLE=1; shift ;;
     -y|--yes) ASSUME_YES=1; shift ;;
     -h|--help) usage 0 ;;
     *) echo "unknown option: $1" >&2; usage 1 ;;
@@ -126,18 +132,41 @@ if [[ "$MODE" == "docker" ]]; then
     exit 1
   fi
 
-  # Guard the identifier: it is interpolated into SQL below.
-  case "$DB" in
-    *[!A-Za-z0-9_]*|"") echo "  invalid database name: ${DB}" >&2; exit 1 ;;
-  esac
+  # Guard the identifiers: they are interpolated into SQL below.
+  for ident in "$DB" "$USER"; do
+    case "$ident" in
+      *[!A-Za-z0-9_]*|"") echo "  invalid identifier: ${ident}" >&2; exit 1 ;;
+    esac
+  done
 
   # The container may be one you already run for something else, with no
-  # code-graph database in it yet.
-  if ! docker exec -i "$CONTAINER" psql -U "$USER" -d postgres -tAc \
-        "SELECT 1 FROM pg_database WHERE datname = '${DB}'" | grep -qx 1; then
+  # code-graph role or database in it yet. Creating those takes the image's
+  # superuser, not the graph's own role.
+  ADMIN="$(docker exec "$CONTAINER" printenv POSTGRES_USER 2>/dev/null || true)"
+  ADMIN="${ADMIN:-postgres}"
+  admin_q() { docker exec -i "$CONTAINER" psql -U "$ADMIN" -d postgres -tAc "$1"; }
+
+  if ! admin_q "SELECT 1 FROM pg_roles WHERE rolname = '${USER}'" | grep -qx 1; then
+    if [[ "$CREATE_ROLE" -eq 0 ]]; then
+      echo "  role '${USER}' does not exist in ${CONTAINER}." >&2
+      echo "  re-run with --create-role to create it with POSTGRES_PASSWORD from .env" >&2
+      exit 1
+    fi
+    ROLE_PW="$(env_value POSTGRES_PASSWORD)"
+    [[ -n "$ROLE_PW" ]] || { echo "  POSTGRES_PASSWORD is not set in .env" >&2; exit 1; }
+    echo "  role '${USER}' does not exist in ${CONTAINER} — creating it"
+    # The password crosses into the container as an environment variable and
+    # into SQL as a psql variable: never in argv, never spliced into a string.
+    CG_PW="$ROLE_PW" docker exec -i -e CG_PW "$CONTAINER" \
+      psql --quiet --no-psqlrc --set ON_ERROR_STOP=1 -U "$ADMIN" -d postgres <<SQL
+\getenv pw CG_PW
+CREATE ROLE ${USER} LOGIN PASSWORD :'pw';
+SQL
+  fi
+
+  if ! admin_q "SELECT 1 FROM pg_database WHERE datname = '${DB}'" | grep -qx 1; then
     echo "  database '${DB}' does not exist in ${CONTAINER} — creating it"
-    docker exec -i "$CONTAINER" psql -U "$USER" -d postgres -q \
-      -c "CREATE DATABASE ${DB}"
+    admin_q "CREATE DATABASE ${DB} OWNER ${USER}" >/dev/null
   fi
 
   # No password: the official postgres image trusts connections over the

@@ -30,7 +30,14 @@ Everything Docker/pytest runs via `wsl -e bash -lc "..."`.
   Inspect: `docker compose exec postgres psql -U codegraph -d codegraph`.
 - Four services: `postgres`, `code-graph-mcp` (8765), `app` (3000, Next.js),
   `ngrok` (4040 inspector). Compose refuses to start without `POSTGRES_PASSWORD`
-  and `CODE_GRAPH_TOKEN`.
+  and `CODE_GRAPH_TOKEN`. ngrok is opt-in: `docker compose --profile tunnel up -d`.
+- **This machine keeps the graph in `data-platform-postgres-1`** (database and role
+  `codegraph`), not the stack's own `postgres`: `.env` sets `COMPOSE_FILE` to add
+  `docker-compose.external-db.yml`, which parks `postgres` and joins
+  `data-platform_default`. That container publishes no host port, so host-side
+  tools (pytest) reach it by container IP on that network.
+- `.mcp.json` sends `Bearer ${CODE_GRAPH_TOKEN}`, expanded from Claude Code's own
+  (Windows) environment, not `.env`; it is set with `setx`.
 - Tests need a Postgres: `TEST_DATABASE_URL` (each test gets its own schema).
 - `scripts/setup_db.sh --docker` creates the schema in the compose container
   (no password — `docker exec psql` uses the container's trusted local socket),

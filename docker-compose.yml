@@ -68,7 +68,7 @@ services:
       - ${REPOS_HOST_PATH}:/workspaces:ro
 
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-codegraph}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-codegraph}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-codegraph}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:5432/${POSTGRES_DB:-codegraph}
       - WORKSPACES_ROOT=/workspaces
       - MCP_HOST=0.0.0.0
       - MCP_PORT=8765
@@ -93,7 +93,7 @@ services:
     environment:
       # Locally the app reads the graph straight from Postgres over the compose
       # network; only source text goes through the MCP service.
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-codegraph}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-codegraph}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-codegraph}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:5432/${POSTGRES_DB:-codegraph}
       - GRAPH_SOURCE=${GRAPH_SOURCE:-postgres}
       - MCP_BASE_URL=http://code-graph-mcp:8765
       - CODE_GRAPH_TOKEN=${CODE_GRAPH_TOKEN}
@@ -103,18 +103,23 @@ services:
     image: ngrok/ngrok:alpine
     container_name: code-graph-ngrok
     restart: unless-stopped
+    # Opt-in: `docker compose --profile tunnel up -d`. Only a Vercel deployment
+    # needs it, and a profile alone would not do — compose interpolates every
+    # service, so a `:?` on the authtoken blocked the whole stack without one.
+    # ngrok itself refuses to start with an empty token.
+    profiles: [tunnel]
     depends_on:
       code-graph-mcp:
         condition: service_started
     environment:
-      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN:?set NGROK_AUTHTOKEN in .env}
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN:-}
     # One tunnel, pointed at the MCP service only. NGROK_DOMAIN is optional; a
     # reserved domain keeps the URL stable so Vercel's env does not change on
     # every restart.
     command: >
       http code-graph-mcp:8765
       --log=stdout
-      ${NGROK_DOMAIN:+--url=${NGROK_DOMAIN}}
+      ${NGROK_DOMAIN:+--url=${NGROK_DOMAIN:-}}
     ports:
       # ngrok's local inspector: shows the public URL and every request.
       - "127.0.0.1:4040:4040"

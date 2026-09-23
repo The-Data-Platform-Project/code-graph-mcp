@@ -186,10 +186,23 @@ A project-scoped [`.mcp.json`](.mcp.json) is included:
 ```json
 {
   "mcpServers": {
-    "code-graph": { "type": "http", "url": "http://127.0.0.1:8765/mcp" }
+    "code-graph": {
+      "type": "http",
+      "url": "http://127.0.0.1:8765/mcp",
+      "headers": { "Authorization": "Bearer ${CODE_GRAPH_TOKEN}" }
+    }
   }
 }
 ```
+
+Claude Code expands `${CODE_GRAPH_TOKEN}` from its *own* environment, not from
+`.env`, so export the same value where Claude Code runs. On Windows, from WSL:
+
+```bash
+setx.exe CODE_GRAPH_TOKEN "$(sed -n 's/^CODE_GRAPH_TOKEN=//p' .env)"
+```
+
+then restart Claude Code. Without it every call gets a 401.
 
 Open Claude Code in this directory (approve the project MCP server when prompted),
 then run `/mcp` — you should see the `code-graph` server with the nine tools
