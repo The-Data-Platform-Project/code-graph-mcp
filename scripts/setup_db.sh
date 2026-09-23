@@ -16,7 +16,7 @@
 set -euo pipefail
 
 MODE="docker"                 # docker | network
-CONTAINER="code-graph-postgres"
+CONTAINER="data-platform-postgres-1"
 HOST="${PGHOST:-aws-0-ap-southeast-2.pooler.supabase.com}"
 PORT="${PGPORT:-5432}"
 USER="${PGUSER:-}"
