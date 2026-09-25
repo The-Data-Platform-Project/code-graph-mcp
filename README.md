@@ -71,7 +71,8 @@ honestly unresolved rather than guessed.
 | Parsing | `tree-sitter` + per-language grammar wheels (Python, JS/TS, HTML, CSS, YAML); config formats parsed grammar-lessly |
 | Storage | Postgres 16 via `psycopg`, hand-written SQL, structure-only |
 | App | Next.js 15 (React 19), deployable to Vercel or run in the stack |
-| MCP | official `mcp` SDK / `FastMCP`, streamable HTTP on `127.0.0.1:8765` |
+| MCP | official `mcp` SDK / `FastMCP`, streamable HTTP on `127.0.0.1:8765`; in the cloud, the TS SDK at the app's `/api/mcp` |
+| Tenancy | one Postgres schema per tenant (`tenant_<slug>`), control plane in `control` |
 
 ```
                           docker compose (mem_limit 500m, read-only rootfs)
@@ -89,16 +90,16 @@ honestly unresolved rather than guessed.
                                                      │
                      /workspaces (repos, read-only) ─┘
 
-  Vercel ──HTTPS──►  ngrok  ──►  code-graph-mcp   (source previews; and the
-                                                  graph too, until Supabase)
+                                  cloud (no machine of yours involved)
+  Claude Code ──Bearer──►  Vercel app /api/mcp ─┐        ┌─► Supabase: control + tenant_<slug>
+  Browser ──login──────►  Vercel app /         ─┴────────┤
+                                                         └─► GitHub (source text, per request)
 ```
 
 **The split that shapes everything:** graph *structure* lives in Postgres and
-can be read from anywhere. Source *text* is never stored — it is read fresh
-from `/workspaces`, which exists only on your machine. That is why a hosted app
-still needs the tunnel, and why moving the database to Supabase
-([docs/SUPABASE.md](docs/SUPABASE.md)) speeds up browsing but cannot remove the
-container.
+can be read from anywhere. Source *text* is never stored — locally it is read
+fresh from `/workspaces`; in the cloud, from the repo's GitHub connection. The
+cloud setup is in [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md).
 
 Source layout:
 
@@ -124,12 +125,17 @@ src/code_graph/
   graph_export.py        the {nodes, links, repos, stats} graph payload
   web.py                 HTTP routes + the token gate on the whole service
   server.py              FastMCP app + tool definitions (workspaces trust boundary)
+  control.py             tenants, MCP tokens, repo connections (the `control` schema)
+  sqlite_import.py       load a SQLite graph into a tenant schema
   __main__.py            `python -m code_graph`
 
 frontend/                the Next.js app — runs in the stack, deploys to Vercel
-  app/api/               graph (Postgres) + readme/file/node (proxied to MCP)
+  app/api/               graph/node/readme/file (tenant-scoped), auth, mcp (MCP endpoint)
   components/            Explorer shell, graph canvas, preview panel
-  lib/db.ts              read-side graph queries, straight against Postgres
+  lib/graph.ts           read-side graph queries (port of queries.py), schema-qualified
+  lib/mcpServer.ts       the MCP tools, twin of the Python read tools
+  lib/viewer.ts          who is viewing → which tenant (the auth seam)
+  lib/source.ts          source text from GitHub, the container, or nowhere
   lib/mcp.ts             authenticated calls to the code-graph container
   lib/render.js          markdown + syntax highlighting (shared with visualizer/)
 ```
@@ -188,7 +194,7 @@ A project-scoped [`.mcp.json`](.mcp.json) is included:
   "mcpServers": {
     "code-graph": {
       "type": "http",
-      "url": "http://127.0.0.1:8765/mcp",
+      "url": "${CODE_GRAPH_MCP_URL:-http://127.0.0.1:8765/mcp}",
       "headers": { "Authorization": "Bearer ${CODE_GRAPH_TOKEN}" }
     }
   }
@@ -216,29 +222,19 @@ get_callers(qualified_name="pkg.module.function")
 trace_call_path(qualified_name="pkg.module.function", direction="callers", depth=3)
 ```
 
-### Deploying the app to Vercel
+### Deploying to the cloud
 
-The app in `frontend/` is the same code the `app` service runs. Point a Vercel
-project at this repository with **Root Directory = `frontend`** — not
-`visualizer/`, which is only the static fallback page and has no API routes, so
-a deployment rooted there renders "No graph data yet" and nothing else. Then
-set:
+The app in `frontend/` deploys to Vercel (**Root Directory = `frontend`**) and
+serves both the graph page and an MCP endpoint at `/api/mcp`, reading the graph
+from Supabase and source previews from GitHub — nothing on your machine needs to
+be running. Each user's graph lives in its own Postgres schema, and each MCP
+token reaches exactly one of them.
 
-| Variable | Value |
-|---|---|
-| `MCP_BASE_URL` | your ngrok URL, e.g. `https://your-name.ngrok.app` |
-| `CODE_GRAPH_TOKEN` | the same token as in `.env` |
-| `GRAPH_SOURCE` | `mcp` until the database is hosted, then `postgres` |
-| `DATABASE_URL` | only once the graph is in Supabase — see below |
-
-With `GRAPH_SOURCE=mcp` the deployment needs no database at all: structure and
-source both come through the tunnel, so it works the moment ngrok is up. Once
-the graph moves to Supabase ([docs/SUPABASE.md](docs/SUPABASE.md)), switch to
-`postgres` and browsing no longer depends on your machine being awake —
-only source previews do.
-
-The token never reaches the browser: it is used server-side, in the app's own
-route handlers.
+Step by step — loading the graph (`scripts/load_sqlite_to_supabase.py`),
+minting tokens (`scripts/mcp_token.py`), Vercel settings, and pointing Claude
+Code at it by setting `CODE_GRAPH_MCP_URL` — is in
+[docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md). Where it is heading (sign-in,
+per-user graphs, an admin portal) is in [docs/FUTURE_STATE.md](docs/FUTURE_STATE.md).
 
 ---
 
@@ -255,6 +251,10 @@ route handlers.
 | `trace_call_path(qualified_name, direction, depth, repo=None)` | BFS over the call graph, either direction, depth-limited (1–20), cycle-safe. |
 | `get_dependencies(file_path, repo=None)` | Imports of a file, each flagged in-project or external. |
 | `get_code_snippet(qualified_name, repo=None)` | Source text, **read fresh from disk** (never stored in the DB). |
+
+The cloud endpoint (`/api/mcp` on the app) serves the same tools minus the two
+indexing ones, with identical arguments and results; `get_code_snippet` reads
+from GitHub there.
 
 ---
 

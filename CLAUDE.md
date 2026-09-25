@@ -36,8 +36,10 @@ Everything Docker/pytest runs via `wsl -e bash -lc "..."`.
   `docker-compose.external-db.yml`, which parks `postgres` and joins
   `data-platform_default`. That container publishes no host port, so host-side
   tools (pytest) reach it by container IP on that network.
-- `.mcp.json` sends `Bearer ${CODE_GRAPH_TOKEN}`, expanded from Claude Code's own
-  (Windows) environment, not `.env`; it is set with `setx`.
+- `.mcp.json` sends `Bearer ${CODE_GRAPH_TOKEN}` to `${CODE_GRAPH_MCP_URL}` (default
+  the local container), both expanded from Claude Code's own (Windows)
+  environment, not `.env`; set with `setx`. Point the URL at the cloud app's
+  `/api/mcp` with a `scripts/mcp_token.py` token to use the cloud.
 - Tests need a Postgres: `TEST_DATABASE_URL` (each test gets its own schema).
 - `scripts/setup_db.sh --docker` creates the schema in the compose container
   (no password — `docker exec psql` uses the container's trusted local socket),
@@ -59,11 +61,26 @@ Everything Docker/pytest runs via `wsl -e bash -lc "..."`.
 
 ## Architecture
 
-`frontend/` is the Next.js app: `lib/db.ts` queries Postgres directly,
-`lib/mcp.ts` calls the container for source text, and `GRAPH_SOURCE=mcp` makes
-it route graph reads through the container too (how a Vercel deploy works before
-Supabase). `lib/render.js` is lifted verbatim from `visualizer/index.html` so the
-markdown/highlighting stays identical to the version under test.
+`frontend/` is the Next.js app, and in the cloud it is the whole product: the
+graph page and the MCP endpoint (`/api/mcp`). See docs/FUTURE_STATE.md (design,
+built vs designed) and docs/ADMIN_GUIDE.md (deploy/operate).
+
+- **Tenancy is a Postgres schema.** Each tenant's graph is the usual five tables
+  in `tenant_<slug>`; `control.{tenants,mcp_tokens,repo_connections}` say who
+  owns which (`src/code_graph/control.py`). TS schema-qualifies every table via
+  `lib/tenancy.ts` `tbl()`; Python points `search_path` at it (`GRAPH_SCHEMA`).
+  A schema name only ever comes from a token or session — never a request field.
+- `lib/viewer.ts` `getViewer()` is the single auth seam (owner-password cookie
+  now, Supabase Auth later). `lib/graph.ts` ports `queries.py`; `lib/source.ts`
+  reads source via `SOURCE_PROVIDER=github|mcp|none`.
+- `/api/mcp`: bearer token → sha256 → tenant. `MCP_BACKEND=native` serves
+  `lib/mcpServer.ts` (a twin of the Python read tools — same names, args and
+  result shapes; keep them in step, `scripts/mcp_parity.py` checks);
+  `MCP_BACKEND=proxy` forwards to the Python server.
+- `lib/render.js` is lifted verbatim from `visualizer/index.html` so the
+  markdown/highlighting stays identical to the version under test.
+- Supabase TLS: node-postgres verifies `sslmode=require` fully, so the app needs
+  `DATABASE_CA_CERT` (Supabase's CA PEM). Never disable verification instead.
 
 ### `src/code_graph/`
 

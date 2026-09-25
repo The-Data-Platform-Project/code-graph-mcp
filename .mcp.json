@@ -2,7 +2,7 @@
   "mcpServers": {
     "code-graph": {
       "type": "http",
-      "url": "http://127.0.0.1:8765/mcp",
+      "url": "${CODE_GRAPH_MCP_URL:-http://127.0.0.1:8765/mcp}",
       "headers": {
         "Authorization": "Bearer ${CODE_GRAPH_TOKEN}"
       }

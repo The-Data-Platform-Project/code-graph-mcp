@@ -1,5 +1,12 @@
 # Moving Postgres to Supabase
 
+> **Superseded for the cloud deployment.** The cloud setup now loads the graph
+> into a per-tenant schema (`tenant_owner`) with
+> `scripts/load_sqlite_to_supabase.py`, reads source from GitHub, and serves MCP
+> from the app — follow [ADMIN_GUIDE.md](ADMIN_GUIDE.md). This page remains
+> accurate for pointing the *local* compose stack at Supabase, and for the
+> connection-string details (pooler vs direct host) it explains.
+
 The compose stack runs Postgres as a local container. Nothing about the code
 assumes that — the graph is reached through one `DATABASE_URL` — so moving to
 Supabase is a connection-string change plus the operational details below.
@@ -9,7 +16,7 @@ Supabase is a connection-string change plus the operational details below.
 Today the database is only reachable on the compose network and on
 `127.0.0.1`. That is fine for the local app, but a Vercel deployment cannot
 open a socket to your machine, so the hosted app falls back to reading the
-graph through the tunnel (`GRAPH_SOURCE=mcp`). Every graph query then needs
+graph through the tunnel. Every graph query then needs
 your machine awake and the tunnel up.
 
 With the graph in Supabase:
@@ -176,11 +183,11 @@ and unused; it costs a little memory and nothing else).
 
 | Variable | Value |
 |---|---|
-| `DATABASE_URL` | the **transaction pooler** URI (port `6543`, user `postgres.<ref>`), plus `?sslmode=require` |
-| `GRAPH_SOURCE` | `postgres` |
-| `MCP_BASE_URL` | your ngrok URL — still needed for source previews |
-| `CODE_GRAPH_TOKEN` | the same token as in `.env` |
+| `DATABASE_URL` | the **transaction pooler** URI (port `6543`, user `<role>.<ref>`) |
+| `DATABASE_CA_CERT` | Supabase's CA certificate (PEM) — node-postgres verifies the server |
 | `PGPOOL_MAX` | `1` — see below |
+
+The full list (login, source provider, MCP backend) is in ADMIN_GUIDE.md §2.5.
 
 Set `PGPOOL_MAX=1` on Vercel. Each serverless instance keeps its own pool, so a
 `max` of 3 across many concurrent instances multiplies quickly; behind the
