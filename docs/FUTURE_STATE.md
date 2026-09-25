@@ -4,6 +4,9 @@ Where this project is going, and which parts of it already exist. The starting
 point is [CURRENT_STATE.md](CURRENT_STATE.md); how to build and run what exists
 is in [ADMIN_GUIDE.md](ADMIN_GUIDE.md).
 
+A visual version of this page: [Code Graph Cloud Architecture](https://claude.ai/artifact/Ju4oQ48AfvJ5wcChPCYPa7)
+(private to the owner). This file is the source of truth.
+
 **Status key:** **Built** = on this branch, tested. **Designed** = decided here,
 not built. Anything marked designed may change when it is built; update this
 file when it does.
