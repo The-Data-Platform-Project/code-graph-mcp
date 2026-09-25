@@ -23,6 +23,15 @@ export function databaseUrl(): string {
   return required("DATABASE_URL");
 }
 
+/**
+ * PEM of the CA that signs the database's certificate (Supabase: Database
+ * settings → SSL configuration → download). Env vars cannot always hold
+ * newlines, so a literal "\n" is accepted in place of each one.
+ */
+export function databaseCaCert(): string {
+  return (process.env.DATABASE_CA_CERT ?? "").replace(/\\n/g, "\n").trim();
+}
+
 /** The tenant the owner's login maps to, until real sign-in exists. */
 export function ownerTenantSlug(): string {
   return process.env.OWNER_TENANT_SLUG?.trim() || "owner";
