@@ -68,7 +68,9 @@ services:
       - ${REPOS_HOST_PATH}:/workspaces:ro
 
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-codegraph}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:5432/${POSTGRES_DB:-codegraph}
+      # GRAPH_SCHEMA picks which schema the Python server reads and writes:
+      # `public` (default, as before) or a tenant schema such as tenant_owner.
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-codegraph}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:5432/${POSTGRES_DB:-codegraph}?options=-csearch_path%3D${GRAPH_SCHEMA:-public}
       - WORKSPACES_ROOT=/workspaces
       - MCP_HOST=0.0.0.0
       - MCP_PORT=8765
@@ -91,12 +93,19 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     environment:
-      # Locally the app reads the graph straight from Postgres over the compose
-      # network; only source text goes through the MCP service.
+      # The app reads each tenant's graph from its own schema, so the database
+      # needs the control plane: run scripts/load_sqlite_to_supabase.py --dsn
+      # against it once (docs/ADMIN_GUIDE.md).
       - DATABASE_URL=postgresql://${POSTGRES_USER:-codegraph}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:5432/${POSTGRES_DB:-codegraph}
-      - GRAPH_SOURCE=${GRAPH_SOURCE:-postgres}
+      - OWNER_PASSWORD=${OWNER_PASSWORD:?set OWNER_PASSWORD in .env}
+      - SESSION_SECRET=${SESSION_SECRET:?set SESSION_SECRET in .env}
+      # Locally the repos are on disk, so source text comes from the MCP
+      # container; in the cloud it comes from GitHub.
+      - SOURCE_PROVIDER=${SOURCE_PROVIDER:-mcp}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - MCP_BASE_URL=http://code-graph-mcp:8765
       - CODE_GRAPH_TOKEN=${CODE_GRAPH_TOKEN}
+      - MCP_BACKEND=${MCP_BACKEND:-native}
     mem_limit: "512m"
 
   ngrok:

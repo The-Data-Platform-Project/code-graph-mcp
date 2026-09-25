@@ -225,6 +225,11 @@ export default function Explorer() {
             </div>
           </div>
         </div>
+
+        <form className="sidebar-footer" method="post" action="/api/auth/logout">
+          <span>{data?.repos.length ?? 0} repositor{data?.repos.length === 1 ? "y" : "ies"}</span>
+          <button type="submit">Sign out</button>
+        </form>
       </div>
 
       {loadError ? (

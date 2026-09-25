@@ -64,7 +64,13 @@ CREATE TABLE IF NOT EXISTS control.repo_connections (
     tenant_id      BIGINT NOT NULL REFERENCES control.tenants(id) ON DELETE CASCADE,
     repo_name      TEXT NOT NULL,
     provider       TEXT NOT NULL DEFAULT 'github' CHECK (provider IN ('github')),
-    external_repo  TEXT NOT NULL CHECK (external_repo ~ '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'),
+    -- GitHub owners are letters, digits and hyphens; repo names may also hold
+    -- . and _ but can never be "." or "..". Checked because the value is
+    -- interpolated into a GitHub API URL.
+    external_repo  TEXT NOT NULL CHECK (
+                       external_repo ~ '^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$'
+                       AND split_part(external_repo, '/', 2) NOT IN ('.', '..')
+                   ),
     git_ref        TEXT,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (tenant_id, repo_name)

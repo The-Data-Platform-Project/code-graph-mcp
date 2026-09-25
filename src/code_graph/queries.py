@@ -52,7 +52,7 @@ def search_symbol(
     if repo:
         sql += " AND repo = %s"
         params.append(repo)
-    sql += " ORDER BY name LIMIT %s"
+    sql += " ORDER BY name, qualified_name, repo LIMIT %s"
     params.append(limit)
     return [dict(r) for r in con.execute(sql, params).fetchall()]
 
@@ -70,7 +70,7 @@ def get_callers(
     if repo:
         sql += " AND e.repo = %s"
         params.append(repo)
-    sql += " ORDER BY n.repo, n.qualified_name"
+    sql += " ORDER BY n.repo, n.qualified_name, n.kind, n.file_path"
     seen = set()
     out = []
     for r in con.execute(sql, params).fetchall():
@@ -94,7 +94,7 @@ def get_callees(
     if repo:
         sql += " AND e.repo = %s"
         params.append(repo)
-    sql += " ORDER BY e.resolved DESC, e.dst_qname"
+    sql += " ORDER BY e.resolved DESC, e.dst_qname, e.repo, e.dst_raw"
     out = []
     seen = set()
     for r in con.execute(sql, params).fetchall():
@@ -148,7 +148,9 @@ def trace_call_path(
         params: list[Any] = [EDGE_CALLS, name]
         if repo:
             params.append(repo)
-        rows = con.execute(sql + repo_clause, params).fetchall()
+        # Ordered, so the traversal (and so which branches are truncated or
+        # marked as cycles) is the same on every run.
+        rows = con.execute(sql + repo_clause + " ORDER BY nb", params).fetchall()
         return [r["nb"] for r in rows]
 
     def expand(name: str, level: int) -> dict[str, Any]:
@@ -196,7 +198,7 @@ def get_dependencies(
     if repo:
         sql += " AND i.repo = %s"
         params.append(repo)
-    sql += " ORDER BY i.repo, i.target"
+    sql += " ORDER BY i.repo, i.target, i.local_name"
     return [
         {
             "repo": r["repo"],

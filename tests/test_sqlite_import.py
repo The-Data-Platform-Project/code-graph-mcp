@@ -215,3 +215,13 @@ def test_non_graph_sqlite_is_refused(fresh_db, tmp_path):
 def test_bad_tenant_slugs_are_rejected(slug):
     with pytest.raises(ValueError):
         control.schema_for(slug)
+
+
+@pytest.mark.parametrize("bad", ["../..", "owner.x/repo", "owner/..", "owner/.", "owner", "a/b/c"])
+def test_repo_connection_rejects_unsafe_github_names(fresh_db, sqlite_graph, bad):
+    # The value is interpolated into a GitHub API URL, so the database refuses
+    # anything that is not a plain owner/name — and the whole load rolls back.
+    with pytest.raises(psycopg.errors.CheckViolation):
+        sqlite_import.load(
+            sqlite_graph, fresh_db, "owner", "Owner", connections=[("sample", bad, None)],
+        )

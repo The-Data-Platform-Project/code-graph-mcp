@@ -455,3 +455,36 @@
     #preview { position: absolute; right: 0; top: 0; bottom: 0; z-index: 20;
                box-shadow: -8px 0 24px rgba(15, 26, 25, 0.10); }
   }
+
+/* ── Login ── */
+.login-shell {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: var(--gray-50); padding: 16px;
+}
+.login-card {
+  width: 100%; max-width: 360px; background: var(--white);
+  border: 1px solid var(--gray-200); border-radius: 16px; padding: 28px;
+  display: flex; flex-direction: column; gap: 10px;
+  box-shadow: 0 8px 24px rgba(15, 26, 25, 0.06);
+}
+.login-input {
+  width: 100%; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--gray-200); background: var(--gray-50);
+  font-size: 14px; color: var(--gray-700); outline: none;
+}
+.login-input:focus { border-color: var(--teal-400); box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1); }
+.login-error { font-size: 12px; color: #b91c1c; }
+.login-submit { margin-top: 6px; }
+.login-note { font-size: 11px; color: var(--gray-400); line-height: 1.5; margin-top: 4px; }
+
+/* ── Sidebar footer (signed-in tenant + sign out) ── */
+.sidebar-footer {
+  padding: 12px 24px; border-top: 1px solid var(--gray-200);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 11px; color: var(--gray-400);
+}
+.sidebar-footer button {
+  border: 1px solid var(--gray-200); background: var(--white); color: var(--gray-600);
+  border-radius: 8px; padding: 5px 10px; font-size: 11px; font-weight: 600; cursor: pointer;
+}
+.sidebar-footer button:hover { border-color: var(--gray-300); }
