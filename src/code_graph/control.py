@@ -24,7 +24,9 @@ and the app connects server-side only.
 
 from __future__ import annotations
 
+import hashlib
 import re
+import secrets
 
 import psycopg
 from psycopg import sql
@@ -152,3 +154,53 @@ def ensure_tenant_schema(con: psycopg.Connection, schema: str) -> None:
     con.execute(db._SCHEMA)
     con.execute("SET LOCAL search_path TO DEFAULT")
     _revoke_client_roles(con, schema)
+
+
+# ── MCP tokens ──────────────────────────────────────────────────────────────
+# A token is shown once, at creation, and only its SHA-256 is kept. The app
+# (frontend/lib/control.ts) hashes the presented bearer the same way.
+
+TOKEN_PREFIX = "cgk_"
+
+
+def hash_token(raw: str) -> str:
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def create_token(con: psycopg.Connection, slug: str, label: str = "") -> str:
+    """Mint a token for an existing tenant. Returns the raw token, which is not stored."""
+    row = con.execute(
+        "SELECT id FROM control.tenants WHERE slug = %s", (validate_slug(slug),)
+    ).fetchone()
+    if row is None:
+        raise LookupError(f"no tenant {slug!r}; load its graph first")
+    raw = TOKEN_PREFIX + secrets.token_urlsafe(32)
+    con.execute(
+        "INSERT INTO control.mcp_tokens (tenant_id, token_hash, token_prefix, label) "
+        "VALUES (%s, %s, %s, %s)",
+        (row["id"], hash_token(raw), raw[:12], label),
+    )
+    return raw
+
+
+def list_tokens(con: psycopg.Connection, slug: str | None = None) -> list[dict]:
+    sql_text = (
+        "SELECT k.id, t.slug AS tenant, k.token_prefix, k.label, k.created_at, "
+        "k.last_used_at, k.revoked_at FROM control.mcp_tokens k "
+        "JOIN control.tenants t ON t.id = k.tenant_id"
+    )
+    params: list = []
+    if slug:
+        sql_text += " WHERE t.slug = %s"
+        params.append(slug)
+    return con.execute(sql_text + " ORDER BY k.id", params).fetchall()
+
+
+def revoke_token(con: psycopg.Connection, token_id: int) -> bool:
+    """Revoke by id. True if a live token was revoked."""
+    cur = con.execute(
+        "UPDATE control.mcp_tokens SET revoked_at = now() "
+        "WHERE id = %s AND revoked_at IS NULL",
+        (token_id,),
+    )
+    return cur.rowcount == 1

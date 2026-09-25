@@ -23,8 +23,6 @@ never echoed. Set DATABASE_URL or pass --dsn to point anywhere else.
 from __future__ import annotations
 
 import argparse
-import getpass
-import os
 import sys
 from pathlib import Path
 
@@ -32,9 +30,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 import psycopg  # noqa: E402
-from psycopg.rows import dict_row  # noqa: E402
 
-from code_graph import sqlite_import  # noqa: E402
+from code_graph import pgcli, sqlite_import  # noqa: E402
 from code_graph.control import schema_for  # noqa: E402
 
 
@@ -59,12 +56,7 @@ def main() -> int:
                     help="map a graph repo to its GitHub repo, for source previews; repeatable")
     ap.add_argument("--replace", action="store_true",
                     help="overwrite the tenant's existing graph")
-    ap.add_argument("--dsn", default=os.environ.get("DATABASE_URL"),
-                    help="full connection string (default: $DATABASE_URL, else Supabase)")
-    ap.add_argument("--host", default="aws-0-ap-southeast-2.pooler.supabase.com")
-    ap.add_argument("--port", default="5432")
-    ap.add_argument("--user", default="postgres.rkeuovfdmmjebechozev")
-    ap.add_argument("--db", default="postgres")
+    pgcli.add_connection_args(ap)
     ap.add_argument("-y", "--yes", action="store_true", help="skip the confirmation prompt")
     args = ap.parse_args()
 
@@ -79,7 +71,7 @@ def main() -> int:
         print(f"  {exc}", file=sys.stderr)
         return 1
 
-    target = "DATABASE_URL" if args.dsn else f"{args.user}@{args.host}:{args.port}/{args.db}"
+    target = pgcli.describe(args)
     print(f"\n  from    {sqlite_path}")
     print(f"          {counts['repos']} repos ({', '.join(repos)}), "
           f"{counts['nodes']} nodes, {counts['edges']} edges")
@@ -96,17 +88,8 @@ def main() -> int:
         print("  aborted")
         return 1
 
-    if args.dsn:
-        conninfo = {"conninfo": args.dsn}
-    else:
-        conninfo = {
-            "host": args.host, "port": args.port, "user": args.user, "dbname": args.db,
-            "password": getpass.getpass(f"  Password for {args.user}: "),
-            "sslmode": "require", "connect_timeout": 15,
-        }
-
     try:
-        with psycopg.connect(row_factory=dict_row, **conninfo) as pg:
+        with pgcli.connect(args) as pg:
             loaded = sqlite_import.load(
                 sqlite_path, pg, args.tenant, args.display_name,
                 replace=args.replace, connections=connections,

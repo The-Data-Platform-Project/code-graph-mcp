@@ -225,3 +225,53 @@ def test_repo_connection_rejects_unsafe_github_names(fresh_db, sqlite_graph, bad
         sqlite_import.load(
             sqlite_graph, fresh_db, "owner", "Owner", connections=[("sample", bad, None)],
         )
+
+
+# ── MCP tokens ──────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def tenant_db(fresh_db):
+    control.ensure_control(fresh_db)
+    control.upsert_tenant(fresh_db, "owner", "Owner")
+    fresh_db.commit()
+    return fresh_db
+
+
+def test_token_is_stored_only_as_its_hash(tenant_db):
+    raw = control.create_token(tenant_db, "owner", "desktop")
+    assert raw.startswith(control.TOKEN_PREFIX) and len(raw) > 40
+    row = tenant_db.execute("SELECT * FROM control.mcp_tokens").fetchone()
+    assert row["token_hash"] == control.hash_token(raw)
+    assert row["token_prefix"] == raw[:12]
+    assert raw not in {str(v) for v in row.values()}
+
+
+def test_token_hash_matches_the_app():
+    # The vector is what frontend/lib/control.ts computes:
+    # createHash("sha256").update("cgk_abc", "utf8").digest("hex")
+    assert control.hash_token("cgk_abc") == (
+        "86fc44ea38d3befbf36da272b8c1aff5e815e6e02b1b363c77cab0e80c79880a"
+    )
+
+
+def test_tokens_are_unique(tenant_db):
+    assert control.create_token(tenant_db, "owner") != control.create_token(tenant_db, "owner")
+
+
+def test_token_for_unknown_tenant_refused(tenant_db):
+    with pytest.raises(LookupError):
+        control.create_token(tenant_db, "nobody")
+
+
+def test_list_and_revoke(tenant_db):
+    control.create_token(tenant_db, "owner", "a")
+    control.create_token(tenant_db, "owner", "b")
+    rows = control.list_tokens(tenant_db, "owner")
+    assert [r["label"] for r in rows] == ["a", "b"]
+    assert "token_hash" not in rows[0]
+    assert control.revoke_token(tenant_db, rows[0]["id"]) is True
+    assert control.revoke_token(tenant_db, rows[0]["id"]) is False  # already revoked
+    assert control.revoke_token(tenant_db, 999999) is False
+    after = control.list_tokens(tenant_db)
+    assert after[0]["revoked_at"] is not None and after[1]["revoked_at"] is None

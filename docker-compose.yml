@@ -106,6 +106,9 @@ services:
       - MCP_BASE_URL=http://code-graph-mcp:8765
       - CODE_GRAPH_TOKEN=${CODE_GRAPH_TOKEN}
       - MCP_BACKEND=${MCP_BACKEND:-native}
+      # Used when MCP_BACKEND=proxy: the Python server on this network.
+      - MCP_UPSTREAM_URL=${MCP_UPSTREAM_URL:-http://code-graph-mcp:8765/mcp}
+      - MCP_UPSTREAM_TOKEN=${CODE_GRAPH_TOKEN}
     mem_limit: "512m"
 
   ngrok:
