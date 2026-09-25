@@ -3,6 +3,9 @@
   "framework": "nextjs",
   "buildCommand": "npm run build",
   "installCommand": "npm ci",
+  "regions": [
+    "syd1"
+  ],
   "functions": {
     "app/api/**/*.ts": {
       "maxDuration": 20

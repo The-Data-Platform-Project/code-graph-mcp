@@ -22,7 +22,6 @@ import type { Tenant } from "@/lib/tenancy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
 
 function jsonRpcError(status: number, code: number, message: string, extra?: HeadersInit) {
   return new Response(JSON.stringify({ jsonrpc: "2.0", error: { code, message }, id: null }), {
