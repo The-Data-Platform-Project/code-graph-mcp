@@ -8,8 +8,8 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     MCP_HOST=0.0.0.0 \
     MCP_PORT=8765 \
-    GRAPH_DB_PATH=/data/graph.db \
-    WORKSPACES_ROOT=/workspaces
+    WORKSPACES_ROOT=/workspaces \
+    VISUALIZER_DIR=/app/visualizer
 
 WORKDIR /app
 
@@ -21,9 +21,12 @@ RUN pip install --no-cache-dir -r requirements.lock.txt
 # Then the application. --no-deps: everything is already pinned above.
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
+# The graph UI, served at `/` by the same process that serves /mcp.
+COPY visualizer ./visualizer
 RUN pip install --no-cache-dir --no-deps .
 
-# Run unprivileged. /data is a bind mount; the host dir is world-writable.
+# Run unprivileged. The graph lives in Postgres, so the container needs no
+# writable state of its own beyond /tmp.
 RUN useradd --create-home --uid 10001 appuser
 USER appuser
 

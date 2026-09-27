@@ -5,32 +5,125 @@ Project context for Claude Code. See [README.md](README.md) for the full write-u
 ## What this is
 
 A persistent, containerized **code knowledge graph** served over MCP. It parses
-repositories with tree-sitter into a SQLite graph of files, symbols, imports and
-call chains, then answers structural questions (callers, callees, call paths,
-dependencies, symbol search) as MCP tools — one graph query instead of grep/read
-chains. No network egress; loopback-only HTTP; hard 500 MiB container cap.
+repositories with tree-sitter into a **Postgres** graph of files, symbols,
+imports and call chains, then answers structural questions (callers, callees,
+call paths, dependencies, symbol search) as MCP tools — one graph query instead
+of grep/read chains. A Next.js app (`frontend/`) reads that graph and deploys to
+Vercel. No egress from the indexer; hard 500 MiB cap on the MCP container.
+
+**The split that shapes the architecture:** graph *structure* lives in Postgres
+and is readable from anywhere. Source *text* is never stored — it is read fresh
+from `/workspaces`, which exists only on the user's machine. So a hosted app can
+browse the graph without the tunnel, but any preview of real code needs the
+container.
 
 ## Runtime & environment (important)
 
 Docker is **not** on the Windows host — it runs inside WSL2 (Ubuntu, `ismail`).
 Everything Docker/pytest runs via `wsl -e bash -lc "..."`.
 
-- Project path in WSL: `/mnt/f/Code Graph/code-graph-mcp` (F: → `/mnt/f`).
-- Dev venv (deps + pytest): `~/cgvenv`. Run tests: `cd '/mnt/f/Code Graph/code-graph-mcp' && ~/cgvenv/bin/pytest`.
+- Project path in WSL: `/mnt/f/The Data Platform Project/Code Graph/code-graph-mcp` (F: → `/mnt/f`).
+- Dev venv (deps + pytest): `~/cgvenv`. Run tests: `cd '/mnt/f/The Data Platform Project/Code Graph/code-graph-mcp' && ~/cgvenv/bin/pytest`.
 - Service: `docker compose up -d`; endpoint `http://127.0.0.1:8765/mcp` (reachable from Windows via WSL localhost forwarding). `.mcp.json` wires it to Claude Code.
 - `.env` sets `REPOS_HOST_PATH=/mnt/f`, so the whole drive mounts read-only at `/workspaces`; repos are indexed by path relative to `/mnt/f` (e.g. `index_repository("data-platform", "DataPlatform/data-platform")`).
-- The graph persists in host `./data/graph.db` (bind mount) across rebuilds.
+- The graph persists in the `pgdata` named volume (Postgres 16) across rebuilds.
+  Inspect: `docker compose exec postgres psql -U codegraph -d codegraph`.
+- Four services: `postgres`, `code-graph-mcp` (8765), `app` (3000, Next.js),
+  `ngrok` (4040 inspector). Compose refuses to start without `POSTGRES_PASSWORD`
+  and `CODE_GRAPH_TOKEN`. ngrok is opt-in: `docker compose --profile tunnel up -d`.
+- **This machine keeps the graph in `data-platform-postgres-1`** (database and role
+  `codegraph`), not the stack's own `postgres`: `.env` sets `COMPOSE_FILE` to add
+  `docker-compose.external-db.yml`, which parks `postgres` and joins
+  `data-platform_default`. That container publishes no host port, so host-side
+  tools (pytest) reach it by container IP on that network.
+- `.mcp.json` sends `Bearer ${CODE_GRAPH_TOKEN}` to `${CODE_GRAPH_MCP_URL}` (default
+  the local container), both expanded from Claude Code's own (Windows)
+  environment, not `.env`; set with `setx`. Point the URL at the cloud app's
+  `/api/mcp` with a `scripts/mcp_token.py` token to use the cloud.
+- Tests need a Postgres: `TEST_DATABASE_URL` (each test gets its own schema).
+  `tests/diagnostics/run_tests.sh` sets it up against `data-platform-postgres-1`.
+  `tests/diagnostics/` also holds the hand-run checks for Supabase, Vercel and
+  the live deploy (not collected by pytest); its README says when to use each.
+- `scripts/setup_db.sh --docker` creates the schema in the compose container
+  (no password — `docker exec psql` uses the container's trusted local socket),
+  creating the database first if it is not there, so an existing Postgres
+  container from another project can host the graph (`--container NAME`);
+  `--supabase` or `--host/--user/--db` for a remote one. `scripts/check_db.py`
+  diagnoses a connection (IPv6-only host, pooler username, missing schema).
+- `scripts/push_to_supabase.sh` copies the local graph up, running `pg_dump |
+  psql` entirely inside the container (the host needs no Postgres client). It
+  truncates the five tables on the target first — `nodes`/`edges` key on a
+  serial id, so appending would duplicate the graph — then resets the id
+  sequences and verifies row counts.
+- Browser UI: `http://127.0.0.1:3000/` — the Next.js app (`frontend/`). The
+  container also still serves the standalone `visualizer/index.html` at
+  `http://127.0.0.1:8765/` as a zero-dependency fallback; the two share
+  `lib/render.js`, but the React panel is a separate implementation, so a UI
+  change may need making twice. Prefer the app.
 - Pass multi-line/JSON to WSL via script files, not inline heredocs (quoting gets mangled).
 
-## Architecture (`src/code_graph/`)
+## Architecture
 
-- `server.py` — FastMCP tools + the workspaces trust boundary (`safe_join`).
+`frontend/` is the Next.js app, and in the cloud it is the whole product: the
+graph page and the MCP endpoint (`/api/mcp`). See docs/FUTURE_STATE.md (design,
+built vs designed) and docs/ADMIN_GUIDE.md (deploy/operate).
+
+- **Tenancy is a Postgres schema.** Each tenant's graph is the usual five tables
+  in `tenant_<slug>`; `control.{tenants,mcp_tokens,repo_connections}` say who
+  owns which (`src/code_graph/control.py`). TS schema-qualifies every table via
+  `lib/tenancy.ts` `tbl()`; Python points `search_path` at it (`GRAPH_SCHEMA`).
+  A schema name only ever comes from a token or session — never a request field.
+- `lib/viewer.ts` `getViewer()` is the single auth seam (owner-password cookie
+  now, Supabase Auth later). `lib/graph.ts` ports `queries.py`; `lib/source.ts`
+  reads source via `SOURCE_PROVIDER=github|mcp|none`.
+- `/api/mcp`: bearer token → sha256 → tenant. `MCP_BACKEND=native` serves
+  `lib/mcpServer.ts` (a twin of the Python read tools — same names, args and
+  result shapes; keep them in step, `scripts/mcp_parity.py` checks);
+  `MCP_BACKEND=proxy` forwards to the Python server.
+- `lib/render.js` is lifted verbatim from `visualizer/index.html` so the
+  markdown/highlighting stays identical to the version under test.
+- Supabase TLS: node-postgres verifies `sslmode=require` fully, so the app needs
+  `DATABASE_CA_CERT` (Supabase's CA PEM). Never disable verification instead.
+
+### `src/code_graph/`
+
+- `server.py` — FastMCP tools + the workspaces trust boundary (`safe_join`). Also
+  registers the visualizer's HTTP routes and wraps the whole ASGI app in
+  `TokenAuthMiddleware` (`main()` builds the app itself rather than calling
+  `mcp.run()`, because `/mcp` is a mount and cannot be gated route-by-route).
+- `web.py` — the browser UI's routes: `/` (serves `visualizer/index.html`),
+  `/api/graph`, `/api/readme`, `/api/node`, `/api/file`. Same-origin by design, so
+  no CORS headers anywhere. `route_specs(config, connect)` returns declarative
+  specs, so tests mount the same handlers on a bare Starlette app.
+- `graph_export.py` — the `{nodes, links, repos, stats}` payload, shared by
+  `/api/graph` and `visualizer/export_graph.py` so the live and static views
+  cannot drift.
 - `indexer.py` — `os.walk` generator → per-file parse → extract → buffer → batched commit → discard tree. One tree in memory at a time (the load-bearing memory discipline). `reindex` is content-hash incremental.
 - `languages.py` — filename/extension → `LanguageSpec` registry. `spec_for(rel)` resolves basename first (Dockerfile/dotfiles), then extension. A spec may be **grammar-less** (`grammar_module=None` → extractor called with `tree=None`); `language_symbol` names a non-default grammar entry (TS).
 - `naming.py` — the shared file-qname scheme. **Code files** (`.py/.js/.ts/...`) → dotted, extension-stripped qname (`src/app/util.js` → `src.app.util`); **everything else** → repo-relative path. `resolve_ref`/`js_import_module` compute cross-file targets by path arithmetic (no FS access).
 - `extractors/` — `python.py`, `javascript.py` (JS+TS), `html.py`, `jinja.py`, `css.py`, `json.py`, `yaml.py`, `generic.py`. Each returns a `FileResult(nodes, edges, imports)` and must not retain the tree. `javascript.py` treats **anonymous function scopes (IIFEs, callbacks) as transparent** — nested named defs attribute to the nearest named container — so IIFE-wrapped modules still yield nodes. `jinja.py` is a regex pass (no grammar) invoked by `html.py`: `{% macro %}` → `Function` node, `{% extends/include/import/from %}` → template `IMPORTS`, macro uses → `CALLS` (restricted to known bindings).
 - `resolver.py` — resolves `CALLS/INHERITS/IMPLEMENTS/USES_TYPE` raw strings to real nodes via a cascade: import-map → self/cls/this → same-module → unique-in-repo → honestly unresolved. Also resolves root-relative asset/template `IMPORTS` (`/static/app.js`, Jinja `{% extends "base.html" %}`) by a unique trailing-path (suffix) match, updating both the `imports` row and the edge. Runs after the whole repo is indexed.
-- `queries.py` — read-side queries backing the tools. `db.py` — schema/WAL. `models.py` — Node/Edge/Import + kind/edge constants. `config.py` — env config.
+- `db.py` — Postgres schema + `connect(dsn)`. DDL runs once per process per DSN.
+- `queries.py` — read-side queries backing the tools, plus the preview side:
+  `get_repo_readme`, `get_file_source`, `get_dependents`, `get_file_symbols` and
+  `get_node_context` (one call returning a node, its source and everything it is
+  wired to). A caller-supplied path is confined to the *repo* root, not merely to
+  the workspaces mount. `models.py` — Node/Edge/Import + kind/edge constants.
+  `config.py` — env config (`DATABASE_URL`, `CODE_GRAPH_TOKEN`).
+
+## Postgres conventions (read before touching SQL)
+
+- Placeholders are `%s`, never `?`. Rows come back as **dicts** (`dict_row`), so
+  `row[0]` fails — alias counts (`COUNT(*) AS n`) and read `row["n"]`.
+- `executemany` lives on the cursor, not the connection: `with con.cursor() as cur`.
+- **`ILIKE`, not `LIKE`, for symbol search.** SQLite's LIKE was case-insensitive;
+  Postgres' is not, so plain LIKE would silently narrow every search. Paths keep
+  case-sensitive `LIKE`.
+- Upserts are `ON CONFLICT (...) DO UPDATE SET x = EXCLUDED.x`.
+- There is no `rowid`; address `imports` rows by `(repo, file_path, local_name)`.
+- The resolver's edge scan uses a **server-side cursor** (`con.cursor(name=...)`).
+  A client-side cursor buffers every row at execute time, which would break the
+  memory discipline on a large repo.
 
 ## Graph model
 
@@ -59,4 +152,7 @@ grammar entry, or `grammar_module=None` for a grammar-less/heuristic format.
 - Grammar wheels are pinned individually; the image builds from `requirements.lock.txt` (runtime never fetches). JSON/TOML/XML/ini are handled grammar-lessly (stdlib `json` for package.json; a generic file-node extractor otherwise).
 - ruff, line-length 100, target py311.
 - Keep the per-file memory discipline: never hold more than one parse tree; buffers hold plain tuples, not tree refs.
+- The visualizer is one self-contained `index.html` — no build step, and no CDN
+  beyond the d3 tag already there. Its markdown renderer and syntax highlighter
+  are deliberately small and hand-written; escape first, then add markup.
 - A missing grammar or a single unparseable file must **skip that file**, never abort a repo index.

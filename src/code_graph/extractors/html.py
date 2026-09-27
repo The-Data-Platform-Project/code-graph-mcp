@@ -20,7 +20,7 @@ from tree_sitter import Node as TSNode
 from tree_sitter import Tree
 
 from ..models import EDGE_IMPORTS, KIND_FILE, Edge, FileResult, Import, Node
-from ..naming import file_qname, is_external, resolve_ref
+from ..naming import file_qname, is_external, is_inline_data, resolve_ref
 from .base import Extractor
 from .jinja import scan_jinja
 
@@ -55,6 +55,8 @@ class HtmlExtractor(Extractor):
                 return
             if "{{" in ref or "{%" in ref:
                 return  # Jinja-templated attribute value (e.g. {{ url_for(...) }})
+            if is_inline_data(ref):
+                return  # <img src="data:..."> carries its content, it depends on nothing
             if is_external(ref):
                 imports.append(Import(file_path, ref, ref, "external"))
                 edges.append(Edge(EDGE_IMPORTS, qname, ref, ref, file_path, 0))

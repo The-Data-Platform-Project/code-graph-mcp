@@ -2,7 +2,7 @@
 
 A persistent, containerized **code knowledge graph** served over MCP. It parses
 your repositories with [tree-sitter](https://tree-sitter.github.io/) into a
-SQLite graph of files, classes, functions, methods, imports and **call chains**,
+Postgres graph of files, classes, functions, methods, imports and **call chains**,
 then exposes structural queries to Claude Code as MCP tools — so a question like
 *"what calls this function?"*, *"what does this page load?"* or *"what does this
 file depend on?"* costs **one graph query** instead of a chain of `grep`/`read`
@@ -27,8 +27,10 @@ service bound to loopback only.
 - **Tiny memory footprint.** ~45 MiB idle; peaked at **122 MiB** while indexing a
   700+ file / 75k-edge repo — against a hard 500 MiB container cap. The indexing
   pipeline processes one file at a time and never holds more than one parse tree.
-- **Persistent.** The graph lives in `./data/graph.db` on a host bind mount, so it
-  survives `docker compose down` and rebuilds, and is directly inspectable.
+- **Persistent.** The graph lives in Postgres on a named volume, so it survives
+  `docker compose down` and rebuilds, and is directly inspectable with `psql`.
+  It can also move to a hosted database ([Supabase](docs/SUPABASE.md)) so the
+  UI can be deployed to Vercel and read it without the tunnel.
 - **Multi-repo, no rebuild.** Mount one parent directory read-only; index any repo
   under it by relative path. Clone a new repo there and it's immediately indexable.
 - **Honest call resolution.** A graduated cascade (imports → same-module →
@@ -67,22 +69,37 @@ honestly unresolved rather than guessed.
 |---|---|
 | Language | Python 3.11 (`python:3.11-slim`, glibc) |
 | Parsing | `tree-sitter` + per-language grammar wheels (Python, JS/TS, HTML, CSS, YAML); config formats parsed grammar-lessly |
-| Storage | stdlib `sqlite3`, WAL mode, hand-written SQL, structure-only |
-| MCP | official `mcp` SDK / `FastMCP`, streamable HTTP on `127.0.0.1:8765` |
+| Storage | Postgres 16 via `psycopg`, hand-written SQL, structure-only |
+| App | Next.js 15 (React 19), deployable to Vercel or run in the stack |
+| MCP | official `mcp` SDK / `FastMCP`, streamable HTTP on `127.0.0.1:8765`; in the cloud, the TS SDK at the app's `/api/mcp` |
+| Tenancy | one Postgres schema per tenant (`tenant_<slug>`), control plane in `control` |
 
 ```
                           docker compose (mem_limit 500m, read-only rootfs)
-  Claude Code  ──HTTP──►  127.0.0.1:8765/mcp  ──►  FastMCP tools
+  Claude Code ──►  127.0.0.1:8765/mcp  ──►  FastMCP tools ─┐
+                                                           │
+  Browser ──►  127.0.0.1:3000  ──►  app (Next.js) ──────────┤
+                                       │   │               │
+                    graph structure ───┘   └── source text │
+                           │                      │        │
+                           ▼                      ▼        ▼
+                     ┌───────────┐        ┌──────────────────────┐
+                     │ postgres  │◄───────│ indexer/resolver/    │
+                     │ (graph)   │        │ queries + /api/file  │
+                     └───────────┘        └──────────────────────┘
                                                      │
-                                    ┌────────────────┼─────────────────┐
-                                    ▼                ▼                 ▼
-                                 indexer          resolver          queries
-                                    │                │                 │
-                                    └──────►  SQLite graph.db  ◄────────┘
-                                             (host ./data, WAL)
+                     /workspaces (repos, read-only) ─┘
 
-  /workspaces  (host repos parent, mounted read-only)  ──►  parsed on demand
+                                  cloud (no machine of yours involved)
+  Claude Code ──Bearer──►  Vercel app /api/mcp ─┐        ┌─► Supabase: control + tenant_<slug>
+  Browser ──login──────►  Vercel app /         ─┴────────┤
+                                                         └─► GitHub (source text, per request)
 ```
+
+**The split that shapes everything:** graph *structure* lives in Postgres and
+can be read from anywhere. Source *text* is never stored — locally it is read
+fresh from `/workspaces`; in the cloud, from the repo's GitHub connection. The
+cloud setup is in [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md).
 
 Source layout:
 
@@ -104,9 +121,23 @@ src/code_graph/
     generic.py           grammar-less fallback for arbitrary config files
   indexer.py             walk + per-file pipeline + batched commits + incremental reindex
   resolver.py            graduated call-resolution cascade
-  queries.py             read-side graph queries backing the tools
+  queries.py             read-side graph queries backing the tools + previews
+  graph_export.py        the {nodes, links, repos, stats} graph payload
+  web.py                 HTTP routes + the token gate on the whole service
   server.py              FastMCP app + tool definitions (workspaces trust boundary)
+  control.py             tenants, MCP tokens, repo connections (the `control` schema)
+  sqlite_import.py       load a SQLite graph into a tenant schema
   __main__.py            `python -m code_graph`
+
+frontend/                the Next.js app — runs in the stack, deploys to Vercel
+  app/api/               graph/node/readme/file (tenant-scoped), auth, mcp (MCP endpoint)
+  components/            Explorer shell, graph canvas, preview panel
+  lib/graph.ts           read-side graph queries (port of queries.py), schema-qualified
+  lib/mcpServer.ts       the MCP tools, twin of the Python read tools
+  lib/viewer.ts          who is viewing → which tenant (the auth seam)
+  lib/source.ts          source text from GitHub, the container, or nowhere
+  lib/mcp.ts             authenticated calls to the code-graph container
+  lib/render.js          markdown + syntax highlighting (shared with visualizer/)
 ```
 
 ---
@@ -118,20 +149,41 @@ with Docker inside WSL2; the Windows-side `127.0.0.1:8765` is reachable through
 WSL localhost forwarding.)
 
 ```bash
-# 1. Point the workspaces mount at the parent dir holding your repos.
+# 1. Fill in .env — it will not start without the required values.
 cp .env.example .env
-#   edit .env: REPOS_HOST_PATH=/mnt/f        (or /home/you/src, etc.)
+#   REPOS_HOST_PATH    the parent dir holding your repos (/mnt/f, ...)
+#   POSTGRES_PASSWORD  anything
+#   CODE_GRAPH_TOKEN   openssl rand -hex 32
+#   NGROK_AUTHTOKEN    only if you want the tunnel
 
-# 2. Build and start the standing service.
+# 2. Build and start the stack.
 docker compose up -d
 
-# 3. Check it's healthy.
-docker compose ps          # STATUS should show "Up (healthy)"
-docker compose logs        # "Uvicorn running on http://0.0.0.0:8765"
+# 3. Create the graph schema in the Postgres container (optional — the
+#    service also creates it on first connect, this just fails early).
+./scripts/setup_db.sh --docker
+
+# 4. Check it's healthy.
+docker compose ps          # postgres/mcp/app "Up (healthy)"
+docker compose logs -f app
 ```
 
-`GRAPH_DB_PATH` and `WORKSPACES_ROOT` are already wired in `docker-compose.yml`;
-you normally only set `REPOS_HOST_PATH`.
+Four services come up:
+
+| Service | Where | What it is |
+|---|---|---|
+| `postgres` | `127.0.0.1:5432` | the graph. Never tunnelled. |
+| `code-graph-mcp` | `127.0.0.1:8765` | indexer, MCP tools, source reads |
+| `app` | `127.0.0.1:3000` | the UI — same code that deploys to Vercel |
+| `ngrok` | `127.0.0.1:4040` | public URL for `code-graph-mcp` only |
+
+Compose **refuses to start** without `POSTGRES_PASSWORD` and
+`CODE_GRAPH_TOKEN`. That is deliberate: the tunnel makes `/api/file` — which
+reads out of `REPOS_HOST_PATH` — reachable from the internet, and the token is
+the only thing in front of it.
+
+Don't want the tunnel? `docker compose up -d postgres code-graph-mcp app`
+leaves ngrok out, and nothing is exposed beyond loopback.
 
 ### Wire it to Claude Code
 
@@ -140,10 +192,23 @@ A project-scoped [`.mcp.json`](.mcp.json) is included:
 ```json
 {
   "mcpServers": {
-    "code-graph": { "type": "http", "url": "http://127.0.0.1:8765/mcp" }
+    "code-graph": {
+      "type": "http",
+      "url": "${CODE_GRAPH_MCP_URL:-http://127.0.0.1:8765/mcp}",
+      "headers": { "Authorization": "Bearer ${CODE_GRAPH_TOKEN}" }
+    }
   }
 }
 ```
+
+Claude Code expands `${CODE_GRAPH_TOKEN}` from its *own* environment, not from
+`.env`, so export the same value where Claude Code runs. On Windows, from WSL:
+
+```bash
+setx.exe CODE_GRAPH_TOKEN "$(sed -n 's/^CODE_GRAPH_TOKEN=//p' .env)"
+```
+
+then restart Claude Code. Without it every call gets a 401.
 
 Open Claude Code in this directory (approve the project MCP server when prompted),
 then run `/mcp` — you should see the `code-graph` server with the nine tools
@@ -156,6 +221,112 @@ index_repository(name="my-service", path="path/relative/to/workspaces")
 get_callers(qualified_name="pkg.module.function")
 trace_call_path(qualified_name="pkg.module.function", direction="callers", depth=3)
 ```
+
+### Deploying to the cloud
+
+The app in `frontend/` deploys to Vercel (**Root Directory = `frontend`**) and
+serves both the graph page and an MCP endpoint at `/api/mcp`, reading the graph
+from Supabase and source previews from GitHub — nothing on your machine needs to
+be running. Each user's graph lives in its own Postgres schema, and each MCP
+token reaches exactly one of them.
+
+Step by step — loading the graph (`scripts/load_sqlite_to_supabase.py`),
+minting tokens (`scripts/mcp_token.py`), Vercel settings, and pointing Claude
+Code at it by setting `CODE_GRAPH_MCP_URL` — is in
+[docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md). Where it is heading (sign-in,
+per-user graphs, an admin portal) is in [docs/FUTURE_STATE.md](docs/FUTURE_STATE.md).
+
+#### What is live (as of 2026-09-28)
+
+| | |
+|---|---|
+| Graph page | https://code-graph-viz.vercel.app (sign in with `OWNER_PASSWORD`) |
+| MCP endpoint | https://code-graph-viz.vercel.app/api/mcp (needs a `cgk_` token) |
+| Vercel project | `code-graph-viz` (team *Ismail's projects*), Root Directory `frontend`, Next.js, functions in `sin1` |
+| Production branch | `claude/hopeful-noether-ff21ui`, **temporarily**; see below |
+| Database | Supabase `rryfmnktebyvfxaftvyv`, Singapore (`ap-southeast-1`); the app connects as the read-only `codegraph_app` role through the transaction pooler (port 6543) |
+| Graph loaded | tenant `owner` (`tenant_owner` schema): 5 repos, 1,700 nodes, 8,952 edges, from `data/graph.db` with `--exclude telemetry-pipeline` |
+
+`telemetry-pipeline` was left out on purpose. It was indexed with path `.`, so
+it holds the whole F: drive (VS Code, Packet Tracer, `$RECYCLE.BIN`, ...), and
+its inline `data:` URIs are too large for a Postgres index.
+
+Production environment variables, all set:
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | `postgresql://codegraph_app.rryfmnktebyvfxaftvyv:<password>@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres` (secret) |
+| `DATABASE_CA_CERT` | Supabase's CA certificate, the full PEM (secret) |
+| `OWNER_PASSWORD` | the login password, 12+ characters (secret) |
+| `SESSION_SECRET` | 64 random hex characters (secret) |
+| `GITHUB_TOKEN` | read-only Contents access, for source previews (secret) |
+| `PGPOOL_MAX` | `1` |
+| `SOURCE_PROVIDER` | `github` |
+| `MCP_BACKEND` | `native` |
+
+Secrets can't be read back from Vercel, so test a value *before* storing it.
+Set `DATABASE_URL` with `tests/diagnostics/set_vercel_db_url.py`: it stores
+only a URL that has just logged in. Typing it at `vercel env add`'s hidden
+prompt is how production ended up with a wrong one. A changed variable only
+takes effect on the next deployment.
+
+#### Connect Claude Code to the cloud
+
+1. Mint a token. It prompts for the Supabase `postgres` password and prints the
+   token **once**; only its hash is stored.
+   ```bash
+   ~/cgvenv/bin/python scripts/mcp_token.py create --tenant owner --label desktop
+   ```
+2. Point Claude Code at the app. These are Windows environment variables, so run
+   this in PowerShell:
+   ```powershell
+   setx CODE_GRAPH_MCP_URL "https://code-graph-viz.vercel.app/api/mcp"
+   setx CODE_GRAPH_TOKEN   "cgk_..."
+   ```
+3. Restart Claude Code and run `/mcp`. `code-graph` shows seven tools: the cloud
+   has no `index_repository` or `reindex_repository`, and serves only the graph
+   that was loaded.
+
+**Back to the local container:** set `CODE_GRAPH_MCP_URL` to
+`http://127.0.0.1:8765/mcp` and `CODE_GRAPH_TOKEN` to the value in `.env`, then
+restart Claude Code. The two use the same variable names, so Claude Code talks
+to one or the other, never both.
+
+Manage tokens with `scripts/mcp_token.py list` and `revoke <id>`. A lost token
+can't be recovered: revoke it and create another.
+
+#### Checking it
+
+```bash
+tests/diagnostics/smoke_prod.sh      # the live app, and its server errors if anything fails
+tests/diagnostics/vercel_status.sh   # project settings, production branch, env var names
+```
+
+`smoke_prod.sh` checks health, the login redirect, the login page, and that
+`/api/mcp` rejects both a missing token and a fake one. Rejecting the fake one
+means looking it up in the database, so a pass proves the database connection,
+certificate and grants all work. After a push, `tests/diagnostics/wait_for_deploy.sh`
+blocks until the build finishes. What each diagnostic is for is in
+[tests/diagnostics/README.md](tests/diagnostics/README.md).
+
+#### Still to do
+
+- **Production builds from `claude/hopeful-noether-ff21ui`.** Every push to it
+  redeploys production. Once the branch is merged, switch production back to
+  `main` (Vercel → Settings → Environments → Production → Branch Tracking).
+- **Secrets are set for Production only.** `SESSION_SECRET`, `PGPOOL_MAX`,
+  `SOURCE_PROVIDER` and `MCP_BACKEND` are on Preview too, but `DATABASE_URL`,
+  `DATABASE_CA_CERT`, `OWNER_PASSWORD` and `GITHUB_TOKEN` are not, so preview
+  deploys can't reach the database. Add them with
+  `tests/diagnostics/set_vercel_db_url.py --target preview` and
+  `vercel env add <NAME> preview --sensitive`.
+- **GitHub mappings for source previews.** Only repos mapped to a GitHub repo
+  get README, file and snippet previews; the rest still show in the graph. See
+  which are mapped with `SELECT repo_name, external_repo, git_ref FROM
+  control.repo_connections;` in the SQL Editor, and add any missing
+  (`audio-transcription`, `care-pk`, `tapmad-reconciliation`, and whichever of
+  `data-platform` and `code-graph-mcp` weren't passed to `--github` at load
+  time) with the SQL in ADMIN_GUIDE §3.
 
 ---
 
@@ -172,6 +343,56 @@ trace_call_path(qualified_name="pkg.module.function", direction="callers", depth
 | `trace_call_path(qualified_name, direction, depth, repo=None)` | BFS over the call graph, either direction, depth-limited (1–20), cycle-safe. |
 | `get_dependencies(file_path, repo=None)` | Imports of a file, each flagged in-project or external. |
 | `get_code_snippet(qualified_name, repo=None)` | Source text, **read fresh from disk** (never stored in the DB). |
+
+The cloud endpoint (`/api/mcp` on the app) serves the same tools minus the two
+indexing ones, with identical arguments and results; `get_code_snippet` reads
+from GitHub there.
+
+---
+
+## Visualizer
+
+The service also serves a browser UI on the same port. With the container up,
+open:
+
+```
+http://127.0.0.1:8765/
+```
+
+You get the force-directed graph (filter by repo, node kind and edge type,
+search by symbol) plus a preview panel:
+
+| Select | You get |
+|---|---|
+| A **repository** | its `README` at the repo root, rendered |
+| A **file** or config node | the whole file, syntax-highlighted with line numbers |
+| A **function**, method or class | **Symbol** — just its own lines; **File** — the whole file with those lines highlighted; **Connections** — what calls it, what it calls, its file's imports, the files importing it, and its siblings |
+
+Every row under **Connections** that resolves to a real node is clickable, so
+you can walk the call graph through the source rather than through the canvas.
+Press <kbd>Esc</kbd> to close the panel; drag its left edge to resize it.
+
+These previews read each file **fresh from disk** through the same
+`safe_join` confinement the MCP tools use — the database still stores
+structure only, never source text.
+
+The page is served from the same origin as `/api/*`, so the API needs no CORS
+headers and no other site your browser visits can read it.
+
+<details>
+<summary>Opening the page without the service</summary>
+
+`visualizer/index.html` also works straight off disk, drawing an exported
+snapshot instead of the live graph:
+
+```bash
+python visualizer/export_graph.py      # writes visualizer/graph-data.json
+```
+
+The graph renders, but previews are unavailable — reading README and source
+files needs the server's access to the workspaces mount. The page says so
+rather than failing silently.
+</details>
 
 ---
 
@@ -220,7 +441,7 @@ The indexing pipeline is designed to stay well under the cap, not to rely on it:
 - One file at a time: parse → extract → buffer rows → **discard the tree** → next.
 - Batched commits (every 200 files); buffers hold plain tuples, not tree refs.
 - The file tree is walked with an `os.walk` generator — never fully materialized.
-- The cross-file registry is plain indexed SQLite lookups, not cached ASTs.
+- The cross-file registry is plain indexed Postgres lookups, not cached ASTs.
 - `reindex_repository` is explicit and on-demand — no background watcher threads.
 
 Measure it yourself:
@@ -263,29 +484,50 @@ Nothing else in the pipeline needs to change. Two knobs cover the awkward cases:
 
 - **Loopback only.** Compose publishes `127.0.0.1:8765:8765`; the service is
   reachable from this machine and nowhere else.
+- **Token on everything.** `/mcp`, `/` and `/api/*` all require
+  `Authorization: Bearer $CODE_GRAPH_TOKEN` (or `X-Code-Graph-Token`), compared
+  in constant time. Only `/healthz` is open, and it reports nothing but
+  `{"status":"ok"}`. This is what makes the ngrok tunnel safe to run; compose
+  will not start the service without a token.
 - **Read-only repos.** `/workspaces` is mounted `:ro`. Repo paths from tool
   arguments are confined to the mount (`safe_join`) — no `../` traversal or
   symlink escapes; symlinks are not followed during the walk.
+- **Previews are confined to the selected repo.** `/api/file` takes a path from
+  the caller, so it is confined to that repo's root rather than to the whole
+  mount: `../another-repo/.env` is refused even though it sits inside
+  `/workspaces`. Binary files are refused and reads are capped at 1 MB.
+- **No CORS.** The `/api/*` routes send no `Access-Control-Allow-Origin`, and
+  the UI is served same-origin, so a page on another site cannot read your
+  code through them.
 - **Hardened container.** Unprivileged user, read-only root filesystem,
   `no-new-privileges`, `tmpfs` `/tmp`.
-- **No egress.** No `requests`/`urllib`/`httpx`/`socket` outbound use in the
-  service source. Grammars and SDK are installed at build time from pinned wheels
-  (`requirements.lock.txt`); nothing is fetched at runtime.
+- **No egress from the indexer.** No `requests`/`urllib`/`httpx`/`socket`
+  outbound use in the service source. Grammars and SDK are installed at build
+  time from pinned wheels (`requirements.lock.txt`); nothing is fetched at
+  runtime. The app self-hosts its fonts at build time and loads no CDN.
+- **The tunnel is opt-in.** `ngrok` is a separate service: leave it out of
+  `docker compose up` and the stack is loopback-only, exactly as before.
 
 ---
 
 ## Data & persistence
 
-`./data/graph.db` is a host bind mount. It survives `docker compose down`,
-rebuilds, and container recreation — restart the service and previously-indexed
-repos are immediately queryable with no re-index. WAL is checkpointed after each
-index so the host sees a single compact `graph.db`. Inspect it directly:
+The graph lives in the `pgdata` named volume. It survives `docker compose
+down` and rebuilds — restart the stack and previously-indexed repos are
+immediately queryable with no re-index. Inspect it directly:
 
 ```bash
-sqlite3 data/graph.db "SELECT name, node_count, edge_count FROM repos;"
+docker compose exec postgres psql -U codegraph -d codegraph \
+  -c "SELECT name, node_count, edge_count FROM repos;"
 ```
 
-To reset the graph, stop the service and delete `data/graph.db*`.
+To reset the graph: `docker compose down -v` (this deletes the volume), or
+`TRUNCATE repos, nodes, edges, files, imports;`.
+
+The graph is **derived data** — it can always be rebuilt by re-indexing. The
+cloud copy was loaded from the older SQLite graph (`data/graph.db`) with
+`scripts/load_sqlite_to_supabase.py`, since there is no indexer in the cloud
+yet; reload it with `--replace` after re-indexing locally.
 
 ---
 
@@ -299,11 +541,17 @@ pip install -e .
 pytest                          # unit + integration + memory tests
 python scripts/memory_check.py  # peak-RSS gate against a real repo
 
+# On the desktop, where the graph's Postgres is data-platform-postgres-1:
+tests/diagnostics/run_tests.sh  # finds the container, sets TEST_DATABASE_URL, runs pytest
+
 # Drive the live server like Claude Code would:
 python scripts/mcp_smoke.py                       # full end-to-end walkthrough
 python scripts/call_tool.py list_repositories
 python scripts/call_tool.py get_callers qualified_name=pkg.mod.func
 ```
+
+Checks for the cloud side (Supabase, Vercel, the live deploy) are in
+[tests/diagnostics/](tests/diagnostics/README.md), with notes on when to use each.
 
 Dependency versions are pinned in `requirements.lock.txt` (the exact set the image
 is built and tested against); `requirements.txt` lists the direct dependencies.

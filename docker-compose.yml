@@ -1,11 +1,51 @@
-# Standalone compose project for the code-graph MCP service. Unrelated to any
-# other Docker network/project on this machine.
+# Standalone compose project for the code-graph stack. Unrelated to any other
+# Docker network/project on this machine.
+#
+#   postgres        the graph itself (structure only, never source text)
+#   code-graph-mcp  indexer + MCP tools + source-file reads from /workspaces
+#   app             the Next.js UI — the same code that deploys to Vercel
+#   ngrok           a public URL for code-graph-mcp, so a Vercel deployment can
+#                   reach this machine
+#
+# Only code-graph-mcp is tunnelled, and only because source text lives on this
+# machine and nowhere else. Postgres is never published to the internet — when
+# the hosted app needs the graph directly, that is what Supabase is for
+# (docs/SUPABASE.md).
+
+name: code-graph
+
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: code-graph-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-codegraph}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      - POSTGRES_DB=${POSTGRES_DB:-codegraph}
+    volumes:
+      # Named volume, not a bind mount: Postgres needs Linux file ownership
+      # that a Windows-hosted bind mount cannot provide.
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # Loopback only, for psql and one-off inspection from the host.
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-codegraph} -d ${POSTGRES_DB:-codegraph}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    mem_limit: "512m"
+
   code-graph-mcp:
     build: .
     image: code-graph-mcp:latest
     container_name: code-graph-mcp
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
 
     # --- hard memory backstop (design target is well under this) ---
     mem_limit: "500m"
@@ -18,18 +58,84 @@ services:
     security_opt:
       - no-new-privileges:true
 
-    # Loopback-only: reachable from this machine, nowhere else.
     ports:
+      # Loopback for Claude Code and the local app; the internet reaches this
+      # service only through the ngrok container below.
       - "127.0.0.1:8765:8765"
 
     volumes:
-      # SQLite graph on a host bind mount -> survives `down`/rebuild, inspectable.
-      - ./data:/data
       # Parent dir of every indexable repo, mounted read-only.
       - ${REPOS_HOST_PATH}:/workspaces:ro
 
     environment:
-      - GRAPH_DB_PATH=/data/graph.db
+      # GRAPH_SCHEMA picks which schema the Python server reads and writes:
+      # `public` (default, as before) or a tenant schema such as tenant_owner.
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-codegraph}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:5432/${POSTGRES_DB:-codegraph}?options=-csearch_path%3D${GRAPH_SCHEMA:-public}
       - WORKSPACES_ROOT=/workspaces
       - MCP_HOST=0.0.0.0
       - MCP_PORT=8765
+      # Required: this service is reachable through the tunnel, and /api/file
+      # serves files from the workspaces mount. Refusing to start without a
+      # token is deliberate.
+      - CODE_GRAPH_TOKEN=${CODE_GRAPH_TOKEN:?set CODE_GRAPH_TOKEN in .env - the tunnel would otherwise expose /workspaces}
+
+  app:
+    build:
+      context: ./frontend
+    image: code-graph-app:latest
+    container_name: code-graph-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      code-graph-mcp:
+        condition: service_started
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      # The app reads each tenant's graph from its own schema, so the database
+      # needs the control plane: run scripts/load_sqlite_to_supabase.py --dsn
+      # against it once (docs/ADMIN_GUIDE.md).
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-codegraph}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:5432/${POSTGRES_DB:-codegraph}
+      - OWNER_PASSWORD=${OWNER_PASSWORD:?set OWNER_PASSWORD in .env}
+      - SESSION_SECRET=${SESSION_SECRET:?set SESSION_SECRET in .env}
+      # Locally the repos are on disk, so source text comes from the MCP
+      # container; in the cloud it comes from GitHub.
+      - SOURCE_PROVIDER=${SOURCE_PROVIDER:-mcp}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - MCP_BASE_URL=http://code-graph-mcp:8765
+      - CODE_GRAPH_TOKEN=${CODE_GRAPH_TOKEN}
+      - MCP_BACKEND=${MCP_BACKEND:-native}
+      # Used when MCP_BACKEND=proxy: the Python server on this network.
+      - MCP_UPSTREAM_URL=${MCP_UPSTREAM_URL:-http://code-graph-mcp:8765/mcp}
+      - MCP_UPSTREAM_TOKEN=${CODE_GRAPH_TOKEN}
+    mem_limit: "512m"
+
+  ngrok:
+    image: ngrok/ngrok:alpine
+    container_name: code-graph-ngrok
+    restart: unless-stopped
+    # Opt-in: `docker compose --profile tunnel up -d`. Only a Vercel deployment
+    # needs it, and a profile alone would not do — compose interpolates every
+    # service, so a `:?` on the authtoken blocked the whole stack without one.
+    # ngrok itself refuses to start with an empty token.
+    profiles: [tunnel]
+    depends_on:
+      code-graph-mcp:
+        condition: service_started
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN:-}
+    # One tunnel, pointed at the MCP service only. NGROK_DOMAIN is optional; a
+    # reserved domain keeps the URL stable so Vercel's env does not change on
+    # every restart.
+    command: >
+      http code-graph-mcp:8765
+      --log=stdout
+      ${NGROK_DOMAIN:+--url=${NGROK_DOMAIN:-}}
+    ports:
+      # ngrok's local inspector: shows the public URL and every request.
+      - "127.0.0.1:4040:4040"
+    mem_limit: "128m"
+
+volumes:
+  pgdata:

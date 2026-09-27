@@ -14,7 +14,7 @@ from tree_sitter import Node as TSNode
 from tree_sitter import Tree
 
 from ..models import EDGE_IMPORTS, KIND_FILE, Edge, FileResult, Import, Node
-from ..naming import file_qname, is_external, resolve_ref
+from ..naming import file_qname, is_external, is_inline_data, resolve_ref
 from .base import Extractor
 
 
@@ -42,7 +42,7 @@ class CssExtractor(Extractor):
 
         def add_ref(ref: str) -> None:
             ref = ref.strip().strip("'").strip('"').strip()
-            if not ref:
+            if not ref or is_inline_data(ref):
                 return
             if is_external(ref):
                 imports.append(Import(file_path, ref, ref, "external"))

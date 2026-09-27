@@ -7,7 +7,7 @@ from code_graph.indexer import Indexer
 
 
 def _counts(config):
-    con = db.connect(config.db_path)
+    con = db.connect(config.database_url)
     try:
         return queries.list_repositories(con)[0]
     finally:
@@ -34,7 +34,7 @@ def test_reindex_picks_up_new_file(indexed):
     result = Indexer(indexed).reindex("sample", root, "sample")
     assert result.files_indexed == 1
 
-    con = db.connect(indexed.db_path)
+    con = db.connect(indexed.database_url)
     try:
         hits = {h["qualified_name"] for h in queries.search_symbol(con, "extra")}
         assert "extra.extra" in hits
@@ -51,13 +51,14 @@ def test_reindex_detects_deletion(indexed):
     result = Indexer(indexed).reindex("sample", root, "sample")
     assert result.files_deleted == 1
 
-    con = db.connect(indexed.db_path)
+    con = db.connect(indexed.database_url)
     try:
         assert queries.search_symbol(con, "orphan") == []
         # app.py's rows are gone
         remaining = con.execute(
-            "SELECT COUNT(*) FROM nodes WHERE repo='sample' AND file_path='app.py'"
-        ).fetchone()[0]
+            "SELECT COUNT(*) AS n FROM nodes "
+            "WHERE repo='sample' AND file_path='app.py'"
+        ).fetchone()["n"]
         assert remaining == 0
     finally:
         con.close()
@@ -73,7 +74,7 @@ def test_reindex_reflects_content_change(indexed):
     result = Indexer(indexed).reindex("sample", root, "sample")
     assert result.files_indexed == 1
 
-    con = db.connect(indexed.db_path)
+    con = db.connect(indexed.database_url)
     try:
         node = queries.find_node(con, "pkg.utils.helper")
         assert "y" in node["signature"]

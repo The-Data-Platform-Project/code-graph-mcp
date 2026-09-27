@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import argparse
 import resource
+import os
 import sys
 import sysconfig
-import tempfile
 import time
 from pathlib import Path
 
@@ -51,20 +51,24 @@ def main() -> int:
         print(f"not a directory: {root}", file=sys.stderr)
         return 2
 
-    with tempfile.TemporaryDirectory() as tmp:
-        config = Config(
-            db_path=Path(tmp) / "memcheck.db",
-            workspaces_root=root.parent,
-            host="127.0.0.1",
-            port=8765,
-            max_file_bytes=1_500_000,
-            commit_batch_files=200,
-        )
-        indexer = Indexer(config)
-        print(f"Indexing {root} ...")
-        start = time.perf_counter()
-        result = indexer.index_full(args.name, root, root.name)
-        elapsed = time.perf_counter() - start
+    # No temp directory any more: the graph lives in Postgres, so this writes
+    # into whatever DATABASE_URL points at. Use a scratch database.
+    config = Config(
+        database_url=os.environ.get(
+            "DATABASE_URL",
+            "postgresql://codegraph:codegraph@127.0.0.1:5432/codegraph",
+        ),
+        workspaces_root=root.parent,
+        host="127.0.0.1",
+        port=8765,
+        max_file_bytes=1_500_000,
+        commit_batch_files=200,
+    )
+    indexer = Indexer(config)
+    print(f"Indexing {root} ...")
+    start = time.perf_counter()
+    result = indexer.index_full(args.name, root, root.name)
+    elapsed = time.perf_counter() - start
 
     peak = peak_rss_mb()
     print(f"  files indexed : {result.files_indexed}")
