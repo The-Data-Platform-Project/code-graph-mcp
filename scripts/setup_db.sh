@@ -21,7 +21,7 @@ set -euo pipefail
 
 MODE="docker"                 # docker | network
 CONTAINER="data-platform-postgres-1"
-HOST="${PGHOST:-aws-0-ap-southeast-2.pooler.supabase.com}"
+HOST="${PGHOST:-aws-0-ap-southeast-1.pooler.supabase.com}"
 PORT="${PGPORT:-5432}"
 USER="${PGUSER:-}"
 DB="${PGDATABASE:-}"
@@ -39,7 +39,7 @@ while [[ $# -gt 0 ]]; do
       shift ;;
     --supabase)
       MODE="network"
-      USER="${USER:-postgres.rkeuovfdmmjebechozev}"
+      USER="${USER:-postgres.rryfmnktebyvfxaftvyv}"
       DB="${DB:-postgres}"
       shift ;;
     --host) MODE="network"; HOST="$2"; shift 2 ;;

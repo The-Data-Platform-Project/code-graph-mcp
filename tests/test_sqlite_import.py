@@ -150,6 +150,51 @@ def test_unknown_repo_in_a_connection_is_refused(fresh_db, sqlite_graph):
         )
 
 
+def _add_repo(sqlite_path: Path, name: str) -> None:
+    """Give the SQLite graph a second repo, with a row in every table."""
+    lite = sqlite3.connect(sqlite_path)
+    lite.execute("INSERT INTO repos (name, path) VALUES (?, '.')", (name,))
+    lite.execute(
+        "INSERT INTO nodes (repo, kind, name, qualified_name, file_path, start_line, end_line) "
+        "VALUES (?, 'File', 'x.py', 'x', 'x.py', 1, 1)", (name,)
+    )
+    lite.execute(
+        "INSERT INTO edges (repo, edge_type, src_qname, dst_qname, dst_raw, src_file) "
+        "VALUES (?, 'IMPORTS', 'x', 'os', 'os', 'x.py')", (name,)
+    )
+    lite.execute("INSERT INTO files (repo, path, hash) VALUES (?, 'x.py', 'h')", (name,))
+    lite.execute(
+        "INSERT INTO imports (repo, file_path, local_name, target, kind) "
+        "VALUES (?, 'x.py', 'os', 'os', 'module')", (name,)
+    )
+    lite.commit()
+    lite.close()
+
+
+def test_excluded_repos_are_left_out_of_every_table(fresh_db, sqlite_graph, conn):
+    _add_repo(sqlite_graph, "junk")
+    loaded = sqlite_import.load(sqlite_graph, fresh_db, "owner", "Owner", exclude=["junk"])
+    for table in GRAPH_TABLES:
+        source = conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"]
+        assert loaded[table] == source
+    for table in GRAPH_TABLES:
+        col = "name" if table == "repos" else "repo"
+        junk = fresh_db.execute(
+            f"SELECT COUNT(*) AS n FROM tenant_owner.{table} WHERE {col} = 'junk'"
+        ).fetchone()["n"]
+        assert junk == 0
+
+
+def test_excluding_an_unknown_repo_is_refused(fresh_db, sqlite_graph):
+    with pytest.raises(LoadError, match="--exclude"):
+        sqlite_import.load(sqlite_graph, fresh_db, "owner", "Owner", exclude=["typo"])
+
+
+def test_excluding_every_repo_is_an_empty_load(fresh_db, sqlite_graph):
+    with pytest.raises(LoadError, match="empty"):
+        sqlite_import.load(sqlite_graph, fresh_db, "owner", "Owner", exclude=["sample"])
+
+
 def test_existing_graph_needs_replace(fresh_db, sqlite_graph):
     sqlite_import.load(sqlite_graph, fresh_db, "owner", "Owner")
     with pytest.raises(LoadError, match="--replace"):

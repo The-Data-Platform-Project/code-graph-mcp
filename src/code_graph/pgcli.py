@@ -19,9 +19,9 @@ from psycopg.rows import dict_row
 def add_connection_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--dsn", default=os.environ.get("DATABASE_URL"),
                     help="full connection string (default: $DATABASE_URL, else Supabase)")
-    ap.add_argument("--host", default="aws-0-ap-southeast-2.pooler.supabase.com")
+    ap.add_argument("--host", default="aws-0-ap-southeast-1.pooler.supabase.com")
     ap.add_argument("--port", default="5432")
-    ap.add_argument("--user", default="postgres.rkeuovfdmmjebechozev")
+    ap.add_argument("--user", default="postgres.rryfmnktebyvfxaftvyv")
     ap.add_argument("--db", default="postgres")
 
 

@@ -4,7 +4,7 @@
   "buildCommand": "npm run build",
   "installCommand": "npm ci",
   "regions": [
-    "syd1"
+    "sin1"
   ],
   "functions": {
     "app/api/**/*.ts": {

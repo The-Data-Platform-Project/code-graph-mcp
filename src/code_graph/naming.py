@@ -80,6 +80,15 @@ def is_external(ref: str) -> bool:
     return r.startswith("//") or bool(_SCHEME_RE.match(r))
 
 
+def is_inline_data(ref: str) -> bool:
+    """True for a ``data:`` URI: the resource is inlined, so it is not a dependency.
+
+    Recording one would also store the payload itself (base64 images run to
+    hundreds of KB), which no index can hold.
+    """
+    return _clean_ref(ref)[:5].lower() == "data:"
+
+
 # Back-compat internal alias.
 _is_external = is_external
 

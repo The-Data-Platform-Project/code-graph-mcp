@@ -54,6 +54,8 @@ def main() -> int:
     ap.add_argument("--display-name", default="Owner", help="tenant display name")
     ap.add_argument("--github", action="append", default=[], metavar="REPO=OWNER/NAME[@REF]",
                     help="map a graph repo to its GitHub repo, for source previews; repeatable")
+    ap.add_argument("--exclude", action="append", default=[], metavar="REPO",
+                    help="leave a graph repo out of the load entirely; repeatable")
     ap.add_argument("--replace", action="store_true",
                     help="overwrite the tenant's existing graph")
     pgcli.add_connection_args(ap)
@@ -64,17 +66,26 @@ def main() -> int:
     sqlite_path = Path(args.sqlite)
     try:
         lite = sqlite_import.open_sqlite(sqlite_path)
-        counts = sqlite_import.sqlite_counts(lite)
-        repos = [r[0] for r in lite.execute("SELECT name FROM repos ORDER BY name")]
+        all_repos = [r[0] for r in lite.execute("SELECT name FROM repos ORDER BY name")]
+        unknown = sorted(set(args.exclude) - set(all_repos))
+        if unknown:
+            raise sqlite_import.LoadError(
+                f"--exclude names {', '.join(unknown)}, not in the graph "
+                f"(have: {', '.join(all_repos)})"
+            )
+        counts = sqlite_import.sqlite_counts(lite, args.exclude)
         lite.close()
     except sqlite_import.LoadError as exc:
         print(f"  {exc}", file=sys.stderr)
         return 1
+    repos = [r for r in all_repos if r not in args.exclude]
 
     target = pgcli.describe(args)
     print(f"\n  from    {sqlite_path}")
     print(f"          {counts['repos']} repos ({', '.join(repos)}), "
           f"{counts['nodes']} nodes, {counts['edges']} edges")
+    if args.exclude:
+        print(f"  skip    {', '.join(sorted(set(args.exclude)))}")
     print(f"  to      {target}, schema {schema_for(args.tenant)}")
     for name, external, ref in connections:
         print(f"  github  {name} -> {external}{'@' + ref if ref else ''}")
@@ -92,7 +103,7 @@ def main() -> int:
         with pgcli.connect(args) as pg:
             loaded = sqlite_import.load(
                 sqlite_path, pg, args.tenant, args.display_name,
-                replace=args.replace, connections=connections,
+                replace=args.replace, connections=connections, exclude=args.exclude,
             )
     except sqlite_import.LoadError as exc:
         print(f"\n  {exc}\n  Nothing was committed.", file=sys.stderr)

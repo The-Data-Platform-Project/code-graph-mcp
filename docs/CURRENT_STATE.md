@@ -54,7 +54,7 @@ There are three candidates. Only one is live.
 | Location | Role | Contents |
 |---|---|---|
 | Container `data-platform-postgres-1`, database and role `codegraph` | **Live.** Joined through the `docker-compose.external-db.yml` overlay on network `data-platform_default`. Publishes no host port. | Schema created. Whether any repository has been indexed into it is not known. |
-| Supabase project `rkeuovfdmmjebechozev`, region `ap-southeast-2`, database `postgres`, schema `public` | Intended hosted copy | The five graph tables exist and are **empty**. They have never held graph data. |
+| Supabase project `rryfmnktebyvfxaftvyv`, region `ap-southeast-1`, database `postgres` | Intended hosted copy (replaced `rkeuovfdmmjebechozev` in `ap-southeast-2` on 2026-09-26) | New and **empty**: no schema yet. Set it up with ADMIN_GUIDE.md §2. |
 | `./data/graph.db` (SQLite) | The pre-branch graph, written by the `main` version | **Orphaned.** This branch neither mounts nor reads it. It still holds whatever was indexed before this work. |
 
 The stack's own `postgres` service (volume `pgdata`) is parked behind the

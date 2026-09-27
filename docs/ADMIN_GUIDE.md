@@ -28,8 +28,8 @@ steps here and a line to the [build log](#build-log).
 
 | Piece | Where | What it does |
 |---|---|---|
-| Graph database | Supabase `rkeuovfdmmjebechozev` (Sydney) | `control` schema (tenants, tokens, repo connections) and `tenant_owner` (your graph) |
-| App | Vercel, root directory `frontend/`, region `syd1` | the graph page at `/`, and the MCP endpoint at `/api/mcp` |
+| Graph database | Supabase `rryfmnktebyvfxaftvyv` (Singapore, `ap-southeast-1`) | `control` schema (tenants, tokens, repo connections) and `tenant_owner` (your graph) |
+| App | Vercel, root directory `frontend/`, region `sin1` | the graph page at `/`, and the MCP endpoint at `/api/mcp` |
 | Source text | GitHub | read per request for README, file and snippet previews; never stored |
 | Claude Code | your machine | connects to `https://<app>/api/mcp` with a token |
 
@@ -82,6 +82,10 @@ $PY scripts/load_sqlite_to_supabase.py \
 - It runs in **one transaction** and verifies row counts before committing.
   If anything fails, nothing is written.
 - It refuses to overwrite an existing graph. Pass `--replace` to reload.
+- `--exclude REPO` (repeatable) leaves a repo out of every table. The desktop's
+  SQLite graph holds `telemetry-pipeline`, which was indexed from the root of
+  F: (path `.`: VS Code, Packet Tracer, `$RECYCLE.BIN`, ...) and carries inline
+  `data:` URIs too large for a Postgres index. Exclude it.
 - The old empty graph tables in Supabase's `public` schema are unused. You can
   leave them or drop them.
 
@@ -100,7 +104,7 @@ GRANT USAGE ON SCHEMA tenant_owner TO codegraph_app;
 GRANT SELECT ON ALL TABLES IN SCHEMA tenant_owner TO codegraph_app;
 ```
 
-Through the pooler, its username is `codegraph_app.rkeuovfdmmjebechozev`.
+Through the pooler, its username is `codegraph_app.rryfmnktebyvfxaftvyv`.
 This grant set was tested: the app works fully under it; writes and other
 tenants' schemas are refused. Re-run the last two lines for any new tenant
 schema. `--replace` loads keep the grants, because they truncate tables
@@ -133,13 +137,13 @@ hour.
 The existing Vercel project `code-graph-viz` points at `visualizer/`, which
 is wrong. In **Settings → Build and Deployment**, set **Root Directory =
 `frontend`** (Framework: Next.js). `frontend/vercel.json` pins functions to
-`syd1`, next to the database.
+`sin1`, next to the database.
 
 **Settings → Environment Variables** (Production, and Preview if you use it):
 
 | Variable | Value |
 |---|---|
-| `DATABASE_URL` | `postgresql://codegraph_app.rkeuovfdmmjebechozev:<password>@aws-0-ap-southeast-2.pooler.supabase.com:6543/postgres` (**transaction** pooler, 6543; URL-encode special characters in the password) |
+| `DATABASE_URL` | `postgresql://codegraph_app.rryfmnktebyvfxaftvyv:<password>@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres` (**transaction** pooler, 6543; URL-encode special characters in the password) |
 | `DATABASE_CA_CERT` | the full PEM from 2.3, including the BEGIN/END lines |
 | `PGPOOL_MAX` | `1` |
 | `OWNER_PASSWORD` | from 2.4 |
@@ -278,7 +282,7 @@ The compose stack still works and now uses the same tenant layout:
 | Symptom | Cause | Fix |
 |---|---|---|
 | App logs `self-signed certificate in certificate chain` or `unable to verify the first certificate` | Supabase CA not configured | set `DATABASE_CA_CERT` (§2.3) |
-| `Tenant or user not found` | pooler username without the project suffix | `codegraph_app.rkeuovfdmmjebechozev` |
+| `Tenant or user not found` | pooler username without the project suffix | `codegraph_app.rryfmnktebyvfxaftvyv` |
 | Loader cannot connect at all | direct host `db.<ref>.supabase.co` is IPv6-only | use the session pooler (the default) |
 | `/api/mcp` → 401 | missing, wrong or revoked token | `mcp_token.py list`; check `CODE_GRAPH_TOKEN` in the *Windows* environment; restart Claude Code |
 | `/api/mcp` → 403 "not served by the MCP upstream" | proxy mode with a non-owner tenant | expected until FUTURE_STATE.md §5 |
@@ -345,3 +349,4 @@ read-only role.
 | 2026-09-25 | `3f379af` | database TLS verified against a configured CA |
 | 2026-09-25 | `3ca0fe0` | Vercel functions in `syd1` |
 | 2026-09-25 | this commit | FUTURE_STATE.md, this guide, switchable `.mcp.json` |
+| 2026-09-26 | this commit | moved to Supabase `rryfmnktebyvfxaftvyv` (`ap-southeast-1`); Vercel functions in `sin1` |

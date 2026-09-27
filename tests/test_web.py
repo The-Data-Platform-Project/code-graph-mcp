@@ -12,7 +12,7 @@ _INDEX_HTML = """\
     <script src="js/app.js"></script>
     <script src="https://cdn.example.com/lib.js"></script>
   </head>
-  <body><a href="about.html">about</a></body>
+  <body><a href="about.html">about</a><img src="data:image/png;base64,iVBORw0KGgo="></body>
 </html>
 """
 
@@ -42,6 +42,8 @@ def test_html_links_resolve_to_js_and_css(make_repo):
     assert deps["https://cdn.example.com/lib.js"]["in_project"] is False
     # a link to a non-existent page is recorded but stays unresolved
     assert deps["about.html"]["in_project"] is False
+    # an inline data: URI is content, not a dependency
+    assert not any(t.startswith("data:") for t in deps)
 
 
 def test_css_import_resolves_between_stylesheets(make_repo):

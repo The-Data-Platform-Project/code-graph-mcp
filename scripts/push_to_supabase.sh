@@ -20,9 +20,9 @@ set -euo pipefail
 CONTAINER="data-platform-postgres-1"
 LOCAL_USER="postgres"
 LOCAL_DB=""
-SB_HOST="aws-0-ap-southeast-2.pooler.supabase.com"
+SB_HOST="aws-0-ap-southeast-1.pooler.supabase.com"
 SB_PORT="5432"
-SB_USER="postgres.rkeuovfdmmjebechozev"
+SB_USER="postgres.rryfmnktebyvfxaftvyv"
 SB_DB="postgres"
 SB_SSLMODE="require"
 ASSUME_YES=0

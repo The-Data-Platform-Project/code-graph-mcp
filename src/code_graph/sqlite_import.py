@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Sequence
 
 import psycopg
 from psycopg import sql
@@ -35,6 +35,10 @@ GRAPH_TABLES: dict[str, list[str]] = {
     "files": ["repo", "path", "hash"],
     "imports": ["repo", "file_path", "local_name", "target", "kind"],
 }
+
+# The column naming a row's repo, for leaving whole repos out of a load.
+_REPO_COLUMN = {"repos": "name", "nodes": "repo", "edges": "repo", "files": "repo",
+                "imports": "repo"}
 
 
 class LoadError(RuntimeError):
@@ -60,8 +64,20 @@ def open_sqlite(path: Path) -> sqlite3.Connection:
     return con
 
 
-def sqlite_counts(con: sqlite3.Connection) -> dict[str, int]:
-    return {t: con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in GRAPH_TABLES}
+def _without(table: str, exclude: Sequence[str]) -> tuple[str, tuple[str, ...]]:
+    """A SQLite WHERE clause (and its parameters) leaving out the excluded repos."""
+    if not exclude:
+        return "", ()
+    marks = ", ".join("?" * len(exclude))
+    return f" WHERE {_REPO_COLUMN[table]} NOT IN ({marks})", tuple(exclude)
+
+
+def sqlite_counts(con: sqlite3.Connection, exclude: Sequence[str] = ()) -> dict[str, int]:
+    counts = {}
+    for t in GRAPH_TABLES:
+        where, params = _without(t, exclude)
+        counts[t] = con.execute(f"SELECT COUNT(*) FROM {t}{where}", params).fetchone()[0]
+    return counts
 
 
 def _target_counts(pg: psycopg.Connection, schema: str) -> dict[str, int]:
@@ -83,29 +99,40 @@ def load(
     *,
     replace: bool = False,
     connections: Iterable[tuple[str, str, str | None]] = (),
+    exclude: Iterable[str] = (),
 ) -> dict[str, int]:
     """Copy a SQLite graph into `tenant_<slug>`. Returns the loaded row counts.
 
     `connections` are (repo_name, "owner/name", git_ref-or-None) triples written
     to `control.repo_connections`, so the app can fetch that repo's source text.
+    Repos named in `exclude` are left out entirely, from every table.
 
     Refuses to overwrite a tenant that already has a graph unless `replace` is
     set, and refuses an empty source outright.
     """
     lite = open_sqlite(sqlite_path)
     try:
-        counts = sqlite_counts(lite)
+        repo_names = {r[0] for r in lite.execute("SELECT name FROM repos")}
+        have = f"(have: {', '.join(sorted(repo_names)) or 'none'})"
+        exclude = sorted(set(exclude))
+        for repo_name in exclude:
+            if repo_name not in repo_names:
+                raise LoadError(
+                    f"--exclude names repo {repo_name!r}, which is not in the graph {have}"
+                )
+
+        counts = sqlite_counts(lite, exclude)
         if counts["nodes"] == 0:
             raise LoadError(f"{sqlite_path} holds no nodes — refusing to load an empty graph")
 
-        repo_names = {r[0] for r in lite.execute("SELECT name FROM repos")}
         connections = list(connections)
         for repo_name, _, _ in connections:
             if repo_name not in repo_names:
                 raise LoadError(
-                    f"--github names repo {repo_name!r}, which is not in the graph "
-                    f"(have: {', '.join(sorted(repo_names)) or 'none'})"
+                    f"--github names repo {repo_name!r}, which is not in the graph {have}"
                 )
+            if repo_name in exclude:
+                raise LoadError(f"--github names repo {repo_name!r}, which is also excluded")
 
         with pg.transaction():
             control.ensure_control(pg)
@@ -133,7 +160,8 @@ def load(
                         sql.Identifier(schema, table),
                         sql.SQL(", ").join(sql.Identifier(c) for c in cols),
                     )
-                    src = lite.execute(f"SELECT {', '.join(cols)} FROM {table}")
+                    where, params = _without(table, exclude)
+                    src = lite.execute(f"SELECT {', '.join(cols)} FROM {table}{where}", params)
                     with cur.copy(copy_sql) as copy:
                         for row in src:
                             copy.write_row(row)

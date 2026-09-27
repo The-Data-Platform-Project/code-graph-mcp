@@ -26,7 +26,7 @@ personal token, and that token can only ever reach their own graph.
 ## Architecture
 
 ```
-                         ┌──────────────────────────── Vercel (syd1) ─────────────────────────────┐
+                         ┌──────────────────────────── Vercel (sin1) ─────────────────────────────┐
   Browser ──────────────▶│ Next.js app (frontend/)                                                 │
   (landing, graph page,  │   pages: /login [built]  / graph [built]  /admin [designed]             │
    admin portal)         │   getViewer()  ── the one auth seam: owner cookie now, Supabase Auth later
@@ -39,7 +39,7 @@ personal token, and that token can only ever reach their own graph.
                          └───────────────┬──────────────────────────────────┬───────────────────────┘
                                          │ pg (TLS, CA-verified)            │ GitHub contents API
                                          ▼                                  ▼
-                 ┌──────────── Supabase Postgres (ap-southeast-2) ───────┐  GitHub
+                 ┌──────────── Supabase Postgres (ap-southeast-1) ───────┐  GitHub
                  │ control.tenants / mcp_tokens / repo_connections [built]│
                  │ control.users / members / index_jobs / audit [designed]│
                  │ tenant_owner.{repos,nodes,edges,files,imports} [built] │
