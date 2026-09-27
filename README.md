@@ -236,6 +236,98 @@ Code at it by setting `CODE_GRAPH_MCP_URL` — is in
 [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md). Where it is heading (sign-in,
 per-user graphs, an admin portal) is in [docs/FUTURE_STATE.md](docs/FUTURE_STATE.md).
 
+#### What is live (as of 2026-09-28)
+
+| | |
+|---|---|
+| Graph page | https://code-graph-viz.vercel.app (sign in with `OWNER_PASSWORD`) |
+| MCP endpoint | https://code-graph-viz.vercel.app/api/mcp (needs a `cgk_` token) |
+| Vercel project | `code-graph-viz` (team *Ismail's projects*), Root Directory `frontend`, Next.js, functions in `sin1` |
+| Production branch | `claude/hopeful-noether-ff21ui`, **temporarily**; see below |
+| Database | Supabase `rryfmnktebyvfxaftvyv`, Singapore (`ap-southeast-1`); the app connects as the read-only `codegraph_app` role through the transaction pooler (port 6543) |
+| Graph loaded | tenant `owner` (`tenant_owner` schema): 5 repos, 1,700 nodes, 8,952 edges, from `data/graph.db` with `--exclude telemetry-pipeline` |
+
+`telemetry-pipeline` was left out on purpose. It was indexed with path `.`, so
+it holds the whole F: drive (VS Code, Packet Tracer, `$RECYCLE.BIN`, ...), and
+its inline `data:` URIs are too large for a Postgres index.
+
+Production environment variables, all set:
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | `postgresql://codegraph_app.rryfmnktebyvfxaftvyv:<password>@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres` (secret) |
+| `DATABASE_CA_CERT` | Supabase's CA certificate, the full PEM (secret) |
+| `OWNER_PASSWORD` | the login password, 12+ characters (secret) |
+| `SESSION_SECRET` | 64 random hex characters (secret) |
+| `GITHUB_TOKEN` | read-only Contents access, for source previews (secret) |
+| `PGPOOL_MAX` | `1` |
+| `SOURCE_PROVIDER` | `github` |
+| `MCP_BACKEND` | `native` |
+
+Secrets can't be read back from Vercel, so test a value *before* storing it.
+Set `DATABASE_URL` with `tests/diagnostics/set_vercel_db_url.py`: it stores
+only a URL that has just logged in. Typing it at `vercel env add`'s hidden
+prompt is how production ended up with a wrong one. A changed variable only
+takes effect on the next deployment.
+
+#### Connect Claude Code to the cloud
+
+1. Mint a token. It prompts for the Supabase `postgres` password and prints the
+   token **once**; only its hash is stored.
+   ```bash
+   ~/cgvenv/bin/python scripts/mcp_token.py create --tenant owner --label desktop
+   ```
+2. Point Claude Code at the app. These are Windows environment variables, so run
+   this in PowerShell:
+   ```powershell
+   setx CODE_GRAPH_MCP_URL "https://code-graph-viz.vercel.app/api/mcp"
+   setx CODE_GRAPH_TOKEN   "cgk_..."
+   ```
+3. Restart Claude Code and run `/mcp`. `code-graph` shows seven tools: the cloud
+   has no `index_repository` or `reindex_repository`, and serves only the graph
+   that was loaded.
+
+**Back to the local container:** set `CODE_GRAPH_MCP_URL` to
+`http://127.0.0.1:8765/mcp` and `CODE_GRAPH_TOKEN` to the value in `.env`, then
+restart Claude Code. The two use the same variable names, so Claude Code talks
+to one or the other, never both.
+
+Manage tokens with `scripts/mcp_token.py list` and `revoke <id>`. A lost token
+can't be recovered: revoke it and create another.
+
+#### Checking it
+
+```bash
+tests/diagnostics/smoke_prod.sh      # the live app, and its server errors if anything fails
+tests/diagnostics/vercel_status.sh   # project settings, production branch, env var names
+```
+
+`smoke_prod.sh` checks health, the login redirect, the login page, and that
+`/api/mcp` rejects both a missing token and a fake one. Rejecting the fake one
+means looking it up in the database, so a pass proves the database connection,
+certificate and grants all work. After a push, `tests/diagnostics/wait_for_deploy.sh`
+blocks until the build finishes. What each diagnostic is for is in
+[tests/diagnostics/README.md](tests/diagnostics/README.md).
+
+#### Still to do
+
+- **Production builds from `claude/hopeful-noether-ff21ui`.** Every push to it
+  redeploys production. Once the branch is merged, switch production back to
+  `main` (Vercel → Settings → Environments → Production → Branch Tracking).
+- **Secrets are set for Production only.** `SESSION_SECRET`, `PGPOOL_MAX`,
+  `SOURCE_PROVIDER` and `MCP_BACKEND` are on Preview too, but `DATABASE_URL`,
+  `DATABASE_CA_CERT`, `OWNER_PASSWORD` and `GITHUB_TOKEN` are not, so preview
+  deploys can't reach the database. Add them with
+  `tests/diagnostics/set_vercel_db_url.py --target preview` and
+  `vercel env add <NAME> preview --sensitive`.
+- **GitHub mappings for source previews.** Only repos mapped to a GitHub repo
+  get README, file and snippet previews; the rest still show in the graph. See
+  which are mapped with `SELECT repo_name, external_repo, git_ref FROM
+  control.repo_connections;` in the SQL Editor, and add any missing
+  (`audio-transcription`, `care-pk`, `tapmad-reconciliation`, and whichever of
+  `data-platform` and `code-graph-mcp` weren't passed to `--github` at load
+  time) with the SQL in ADMIN_GUIDE §3.
+
 ---
 
 ## MCP tools
@@ -432,8 +524,10 @@ docker compose exec postgres psql -U codegraph -d codegraph \
 To reset the graph: `docker compose down -v` (this deletes the volume), or
 `TRUNCATE repos, nodes, edges, files, imports;`.
 
-The graph is **derived data** — it can always be rebuilt by re-indexing, which
-is why the Supabase move re-indexes rather than migrating rows.
+The graph is **derived data** — it can always be rebuilt by re-indexing. The
+cloud copy was loaded from the older SQLite graph (`data/graph.db`) with
+`scripts/load_sqlite_to_supabase.py`, since there is no indexer in the cloud
+yet; reload it with `--replace` after re-indexing locally.
 
 ---
 
@@ -447,11 +541,17 @@ pip install -e .
 pytest                          # unit + integration + memory tests
 python scripts/memory_check.py  # peak-RSS gate against a real repo
 
+# On the desktop, where the graph's Postgres is data-platform-postgres-1:
+tests/diagnostics/run_tests.sh  # finds the container, sets TEST_DATABASE_URL, runs pytest
+
 # Drive the live server like Claude Code would:
 python scripts/mcp_smoke.py                       # full end-to-end walkthrough
 python scripts/call_tool.py list_repositories
 python scripts/call_tool.py get_callers qualified_name=pkg.mod.func
 ```
+
+Checks for the cloud side (Supabase, Vercel, the live deploy) are in
+[tests/diagnostics/](tests/diagnostics/README.md), with notes on when to use each.
 
 Dependency versions are pinned in `requirements.lock.txt` (the exact set the image
 is built and tested against); `requirements.txt` lists the direct dependencies.

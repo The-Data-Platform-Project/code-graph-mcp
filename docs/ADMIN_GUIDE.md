@@ -152,10 +152,17 @@ is wrong. In **Settings → Build and Deployment**, set **Root Directory =
 | `GITHUB_TOKEN` | from 2.4 |
 | `MCP_BACKEND` | `native` |
 
+Store `DATABASE_URL` with `tests/diagnostics/set_vercel_db_url.py` rather
+than at `vercel env add`'s hidden prompt. It tests the login first and stores
+exactly the URL that worked, percent-encoded. A mistyped value can't be read
+back, and only shows up as `password authentication failed` in the function
+logs.
+
 **Which branch deploys.** The code is on `claude/hopeful-noether-ff21ui`,
 which is not merged into `main`. Either merge it, or set this branch as the
 production branch (**Settings → Environments → Production → Branch
-Tracking**). A preview deployment works for the page. But if **Deployment
+Tracking**). Production currently tracks this branch; switch it back to
+`main` after the merge. A preview deployment works for the page. But if **Deployment
 Protection** is on for previews, Vercel answers Claude Code's MCP calls with
 its own login wall, so use production for MCP.
 
@@ -355,4 +362,5 @@ read-only role.
 | 2026-09-25 | `3f379af` | database TLS verified against a configured CA |
 | 2026-09-25 | `3ca0fe0` | Vercel functions in `syd1` |
 | 2026-09-25 | this commit | FUTURE_STATE.md, this guide, switchable `.mcp.json` |
-| 2026-09-26 | this commit | moved to Supabase `rryfmnktebyvfxaftvyv` (`ap-southeast-1`); Vercel functions in `sin1` |
+| 2026-09-26 | `99d65da` | moved to Supabase `rryfmnktebyvfxaftvyv` (`ap-southeast-1`); Vercel functions in `sin1`; loader `--exclude` |
+| 2026-09-28 | `7a21111` | `tests/diagnostics/`; production live on `code-graph-viz.vercel.app`, tracking this branch |
