@@ -41,6 +41,9 @@ Everything Docker/pytest runs via `wsl -e bash -lc "..."`.
   environment, not `.env`; set with `setx`. Point the URL at the cloud app's
   `/api/mcp` with a `scripts/mcp_token.py` token to use the cloud.
 - Tests need a Postgres: `TEST_DATABASE_URL` (each test gets its own schema).
+  `tests/diagnostics/run_tests.sh` sets it up against `data-platform-postgres-1`.
+  `tests/diagnostics/` also holds the hand-run checks for Supabase, Vercel and
+  the live deploy (not collected by pytest); its README says when to use each.
 - `scripts/setup_db.sh --docker` creates the schema in the compose container
   (no password — `docker exec psql` uses the container's trusted local socket),
   creating the database first if it is not there, so an existing Postgres

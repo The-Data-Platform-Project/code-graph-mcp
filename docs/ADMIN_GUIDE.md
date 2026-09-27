@@ -279,6 +279,12 @@ The compose stack still works and now uses the same tenant layout:
 
 ## 6. Troubleshooting
 
+Start with `tests/diagnostics/smoke_prod.sh`: it checks the live app and, if
+anything fails, prints the server's own errors. The other scripts in
+[tests/diagnostics](../tests/diagnostics/README.md) check each piece on its own:
+the pooler, a `DATABASE_URL`, the Vercel settings and the SQLite graph before
+a load.
+
 | Symptom | Cause | Fix |
 |---|---|---|
 | App logs `self-signed certificate in certificate chain` or `unable to verify the first certificate` | Supabase CA not configured | set `DATABASE_CA_CERT` (§2.3) |
