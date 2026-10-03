@@ -10,7 +10,7 @@ import { APP_PATH, SITE } from "@/lib/site";
 import CopyCode from "@/components/site/CopyCode";
 
 export const metadata: Metadata = {
-  title: { absolute: `${SITE.name} — ${SITE.tagline}` },
+  title: { absolute: `${SITE.name}: ${SITE.tagline}` },
   description: SITE.description,
   alternates: { canonical: "/" },
   openGraph: { title: SITE.name, description: SITE.description, url: "/", siteName: SITE.name, type: "website" },
@@ -50,9 +50,9 @@ export default function Home() {
               Build context your <span className="grad-text">agents can use.</span>
             </h1>
             <p className="lede">
-              Turn source code into connected, queryable knowledge. ContextForge maps the
-              structure and relationships within your repositories, helping developers explore
-              complex software and giving AI agents the context they need to navigate it.
+              ContextForge parses your repositories into a graph of files, functions and the
+              calls and imports between them. You can explore that graph in the browser, and
+              your AI agent can query it over MCP instead of reading file after file.
             </p>
             <div className="hero-ctas">
               <a className="btn btn-primary" href={APP_PATH}>Launch ContextForge</a>
@@ -63,7 +63,6 @@ export default function Home() {
               <span>Open source · Apache-2.0</span>
               <Link href="/docs/getting-started">Self-host with Docker</Link>
             </div>
-            <p className="micro">From source code to structured context.</p>
           </div>
           <HeroVisual />
         </div>
@@ -76,30 +75,30 @@ export default function Home() {
             <span className="eyebrow">The context problem</span>
             <h2 className="h2">Your codebase is connected. Your AI&apos;s context should be too.</h2>
             <p className="lede">
-              Software rarely makes sense one file at a time. Functions call other functions.
-              Modules import dependencies. Services interact across application boundaries.
+              Software rarely makes sense one file at a time. A function calls other functions,
+              a module imports others, and services talk to each other across the app.
             </p>
           </div>
           <div className="grid-3">
             <div className="card">
               <div className="icon"><Icon.split /></div>
               <h3 className="h3">Fragmented knowledge</h3>
-              <p>What a function means is spread across the files that call it, the modules it imports and the services around it.</p>
+              <p>What a function does depends on the files that call it, the modules it imports and the services around it, and those are all in different places.</p>
             </div>
             <div className="card">
               <div className="icon"><Icon.link /></div>
               <h3 className="h3">Hidden relationships</h3>
-              <p>Understanding one change means tracing callers, callees and imports — work that is slow to do by searching text.</p>
+              <p>Understanding one change means tracing callers, callees and imports, and doing that by searching text is slow.</p>
             </div>
             <div className="card">
               <div className="icon"><Icon.search /></div>
               <h3 className="h3">Isolated snippets</h3>
-              <p>Yet much of the context available to AI tools arrives as isolated snippets, without the structure that connects them.</p>
+              <p>Most of the context AI tools get today arrives as isolated snippets, without the structure that connects them.</p>
             </div>
           </div>
           <p className="statement" style={{ marginTop: 48 }}>
-            ContextForge makes the relationships explicit, turning code structure into{" "}
-            <em>knowledge that can be explored and queried.</em>
+            So ContextForge writes those relationships down as a graph{" "}
+            <em>you can browse and query.</em>
           </p>
         </div>
       </section>
@@ -111,24 +110,24 @@ export default function Home() {
             <span className="eyebrow">The context layer</span>
             <h2 className="h2">From source code to connected intelligence.</h2>
             <p className="lede">
-              ContextForge analyzes supported repositories and builds a structured graph of files,
-              symbols, and their relationships. Developers can explore the graph visually. AI
-              agents can retrieve targeted context through MCP.
+              ContextForge parses the repositories you point it at and builds a graph of files,
+              symbols and how they connect. You can explore it visually, and an AI agent can pull
+              exactly the context it needs through MCP.
             </p>
             <p className="lede" style={{ color: "var(--text)" }}>
-              The graph provides the structure. The agent performs the reasoning.
+              The graph gives the agent the structure, and the agent does the reasoning.
             </p>
           </div>
           <div className="grid-4">
             <div className="card">
               <div className="icon"><Icon.layers /></div>
               <h3 className="h3">Understand the structure</h3>
-              <p>Files, classes, functions, methods, interfaces, config files and Compose services — for Python, JavaScript and TypeScript, HTML and Jinja, CSS, JSON and YAML.</p>
+              <p>Files, classes, functions, methods, interfaces, config files and Compose services, across Python, JavaScript and TypeScript, HTML and Jinja, CSS, JSON and YAML.</p>
             </div>
             <div className="card">
               <div className="icon"><Icon.link /></div>
               <h3 className="h3">Follow the connections</h3>
-              <p>Calls, imports, inheritance, interface implementation and type usage, resolved across files and languages. What cannot be resolved is marked, never guessed.</p>
+              <p>Calls, imports, inheritance, interface implementation and type usage, resolved across files and languages. Anything it can't resolve gets marked as unresolved instead of guessed.</p>
             </div>
             <div className="card">
               <div className="icon"><Icon.search /></div>
@@ -138,7 +137,7 @@ export default function Home() {
             <div className="card">
               <div className="icon"><Icon.plug /></div>
               <h3 className="h3">Connect your agents</h3>
-              <p>An MCP endpoint with bearer-token access. Add one block to Claude Code&apos;s MCP config and the graph is a tool call away.</p>
+              <p>The graph is served over MCP with a bearer token. Add one block to Claude Code&apos;s MCP config and it&apos;s a tool call away.</p>
             </div>
           </div>
         </div>
@@ -152,8 +151,8 @@ export default function Home() {
             <h2 className="h2">See how your software fits together.</h2>
             <p className="lede">
               The graph explorer draws a repository as a graph you can search and filter. Open any
-              symbol to read its source and follow what calls it, what it calls and what its file
-              imports — without losing the bigger picture.
+              symbol to read its source and see what calls it, what it calls and what its file
+              imports, without losing sight of the rest of the codebase.
             </p>
           </div>
 
@@ -169,19 +168,19 @@ export default function Home() {
             <div style={{ display: "grid", gap: 16 }}>
               <h3 className="h3" style={{ fontSize: 24 }}>Try it on a real graph</h3>
               <p className="muted" style={{ margin: 0 }}>
-                Below is the core of ContextForge&apos;s own indexer — {graph.nodes.length} nodes and{" "}
+                Below is the core of ContextForge&apos;s own indexer, {graph.nodes.length} nodes and{" "}
                 {graph.links.length} relationships exported from a real index of the{" "}
-                <code>{DEMO_REPO}</code> repository. Hover a node to see its neighbourhood; click it,
-                or any connection in the panel, to move through the code.
+                <code>{DEMO_REPO}</code> repository. Hover a node to see what it&apos;s connected to,
+                and click it (or any connection in the panel) to move through the code.
               </p>
               <Link className="link-arrow" href="/docs/explorer">Read the explorer guide</Link>
             </div>
             <ul className="feature-list">
-              <li><span><b>Repository selector</b> with the README a click away</span></li>
-              <li><span><b>Search and filters</b> by node kind and relationship type</span></li>
-              <li><span><b>Symbol, File and Connections</b> tabs for every node</span></li>
-              <li><span><b>Unresolved and external</b> references marked, not hidden</span></li>
-              <li><span><b>Source read on demand</b> and syntax-highlighted — never stored</span></li>
+              <li><span>Pick a repository and its README is a click away</span></li>
+              <li><span>Search, and filter by node kind and relationship type</span></li>
+              <li><span>Every node opens to Symbol, File and Connections tabs</span></li>
+              <li><span>Unresolved and external references are marked, not hidden</span></li>
+              <li><span>Source is read when you open it and never stored</span></li>
             </ul>
           </div>
           <div className="frame" style={{ marginTop: 32 }}>
@@ -211,14 +210,13 @@ export default function Home() {
             <span className="eyebrow">Built for agentic workflows</span>
             <h2 className="h2">Give agents context, not just code snippets.</h2>
             <p className="lede">
-              ContextForge exposes structured code intelligence through MCP, allowing compatible
-              AI agents to search symbols, follow call relationships, inspect dependencies, and
-              retrieve relevant source context.
+              ContextForge serves the graph over MCP, so an agent can search symbols, follow call
+              chains, check what a file depends on and pull just the source it needs.
             </p>
             <ul className="feature-list">
-              <li><span><b>Seven read tools</b>: list_repositories, search_symbol, get_callers, get_callees, trace_call_path, get_dependencies, get_code_snippet</span></li>
-              <li><span><b>Per-user tokens</b>, shown once, stored only as a hash, revocable</span></li>
-              <li><span><b>Tested with Claude Code</b>; any streamable-HTTP MCP client should work</span></li>
+              <li><span>Seven read tools: list_repositories, search_symbol, get_callers, get_callees, trace_call_path, get_dependencies and get_code_snippet</span></li>
+              <li><span>Each token is shown once, stored only as a hash, and can be revoked</span></li>
+              <li><span>Tested with Claude Code. Other streamable-HTTP MCP clients should work, but I haven&apos;t tried them yet</span></li>
             </ul>
             <p className="faint" style={{ margin: 0, fontSize: 14 }}>
               Left: the <code>.mcp.json</code> shipped in the repository, and a real call against
@@ -283,13 +281,13 @@ export default function Home() {
                 <span className="badge badge-vision" style={{ justifySelf: "start" }}>The vision · future direction</span>
                 <h2 className="h2">From repository exploration to a living map of your software.</h2>
                 <p className="lede">
-                  ContextForge is evolving toward a hosted code intelligence platform where
-                  repositories can be connected, indexed, and continuously refreshed.
+                  Where we&apos;re taking ContextForge is a hosted platform: you sign in, connect
+                  your repositories, and they get indexed and kept up to date for you.
                 </p>
                 <p className="muted" style={{ margin: 0 }}>
-                  The goal is to make software architecture easier to understand and give AI
-                  agents reliable, structured context across applications, repositories, and
-                  development workflows.
+                  The goal stays the same as today, making a codebase easier to understand and
+                  giving AI agents structured context they can rely on, just across all your
+                  repositories instead of the ones on one machine.
                 </p>
                 <Link className="link-arrow" href="/roadmap">See the roadmap</Link>
               </div>
@@ -315,8 +313,8 @@ export default function Home() {
               Your code has a story. Give your agents the context to follow it.
             </h2>
             <p className="lede" style={{ textAlign: "center" }}>
-              Build a connected view of your software and make its structure available to the
-              tools that need it.
+              Index a repository, see how it fits together, and hand your agent the graph instead
+              of a pile of files.
             </p>
             <div className="hero-ctas" style={{ justifyContent: "center" }}>
               <a className="btn btn-primary" href={APP_PATH}>Launch ContextForge</a>

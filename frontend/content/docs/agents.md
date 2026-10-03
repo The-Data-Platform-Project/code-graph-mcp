@@ -1,15 +1,15 @@
-ContextForge serves its graph over **MCP** (Model Context Protocol), so a coding agent can ask structural questions directly: who calls this, what does it call, what does this file import. Each answer is one tool call returning a short, structured result, instead of a search followed by reading whole files.
+ContextForge serves its graph over MCP (Model Context Protocol), so a coding agent can ask structural questions directly: who calls this, what does it call, what does this file import. Each answer is one tool call with a short, structured result, instead of a search followed by reading whole files.
 
-The examples on this page are real tool calls against the ContextForge repository, trimmed for length.
+All the examples on this page are real tool calls against the ContextForge repository, trimmed for length.
 
 ## Endpoints
 
 | Deployment | URL | Token | Tools |
 |---|---|---|---|
 | Self-hosted | `http://127.0.0.1:8765/mcp` | `CODE_GRAPH_TOKEN` from your `.env` | 9: the seven read tools plus `index_repository` and `reindex_repository` |
-| Hosted | `https://<your-deployment>/api/mcp` | A personal token beginning `cgk_`, issued by the administrator | 7 read tools |
+| Hosted | `https://<your-deployment>/api/mcp` | A personal token starting with `cgk_`, issued by the administrator | 7 read tools |
 
-Both use the **streamable HTTP** transport with an `Authorization: Bearer <token>` header. The read tools behave identically on both, with the same names, arguments and result shapes.
+Both use the streamable HTTP transport with an `Authorization: Bearer <token>` header, and the read tools behave the same on both: same names, same arguments, same result shapes.
 
 ## Connect Claude Code
 
@@ -27,7 +27,7 @@ The repository ships a project-level `.mcp.json`:
 }
 ```
 
-Claude Code fills in `${…}` from **its own environment**, not from `.env`, so both values are set where Claude Code runs:
+Claude Code fills in the `${…}` values from its own environment, not from `.env`, so both values get set where Claude Code runs:
 
 | Target | `CODE_GRAPH_MCP_URL` | `CODE_GRAPH_TOKEN` |
 |---|---|---|
@@ -39,19 +39,19 @@ export CODE_GRAPH_MCP_URL="https://<your-deployment>/api/mcp"
 export CODE_GRAPH_TOKEN="cgk_..."
 ```
 
-On Windows, with Claude Code running on the Windows side, use `setx` instead of `export`. Restart Claude Code, then run `/mcp`: `code-graph` should be listed with its tools. To use it from any directory, add the same block to your user-level Claude Code configuration.
+On Windows with Claude Code on the Windows side, use `setx` instead of `export`. Restart Claude Code and run `/mcp`, and you should see `code-graph` listed with its tools. If you want it available in every directory, add the same block to your user-level Claude Code config.
 
-Because both targets use the same two variables, Claude Code talks to one graph at a time. Switching is an environment change and a restart.
+Since both targets use the same two variables, Claude Code talks to one graph at a time. Switching between them is just an environment change and a restart.
 
 ### Other MCP clients
 
-Any client that supports streamable HTTP and a custom `Authorization` header should work with the same URL and token. Claude Code is the client ContextForge is tested with.
+Any client that supports streamable HTTP and a custom `Authorization` header should work with the same URL and token. That said, Claude Code is the only client I've actually tested ContextForge with, so I can't really vouch for the others yet.
 
 ## Workflows
 
 ### Find a symbol
 
-You rarely know a qualified name up front. `search_symbol` takes a substring or a glob.
+You rarely know a qualified name up front, so start here. `search_symbol` takes a substring or a glob.
 
 ```text
 search_symbol(pattern="*resolve*", repo="code-graph-mcp", limit=12)
@@ -70,17 +70,17 @@ search_symbol(pattern="*resolve*", repo="code-graph-mcp", limit=12)
 
 ### Who calls this?
 
-Before changing a function, find everything that depends on it.
+Before you change a function, find everything that depends on it.
 
 ```text
 get_callers(qualified_name="src.code_graph.naming.file_qname", repo="code-graph-mcp")
 ```
 
-It returns 12 callers, one per extractor that names files: `CssExtractor.extract`, `HtmlExtractor.extract`, `JavaScriptExtractor.extract`, `JsonExtractor.extract`, `YamlExtractor.extract`, `scan_jinja`, `PythonExtractor.module_qname` and more. Each comes with its file, line and signature.
+This one comes back with 12 callers, pretty much one per extractor that names files: `CssExtractor.extract`, `HtmlExtractor.extract`, `JavaScriptExtractor.extract`, `JsonExtractor.extract`, `YamlExtractor.extract`, `scan_jinja`, `PythonExtractor.module_qname` and a few more. Each one comes with its file, line and signature.
 
 ### What does this do?
 
-`get_callees` gives a function's outline without reading its body:
+`get_callees` gives you a function's outline without reading its body:
 
 ```text
 get_callees(qualified_name="src.code_graph.indexer.Indexer.index_full", repo="code-graph-mcp")
@@ -98,7 +98,7 @@ get_callees(qualified_name="src.code_graph.indexer.Indexer.index_full", repo="co
 ] }
 ```
 
-The whole indexing pipeline in one answer: connect, clear, ingest, finalize, resolve. `con.close` is marked `resolved: false` because it is a library method, not a node in the graph.
+That's the whole indexing pipeline in one answer: connect, clear, ingest, finalize, resolve. `con.close` comes back `resolved: false` because it's a library method, not a node in the graph.
 
 ### How is this reached?
 
@@ -130,11 +130,11 @@ get_dependencies(file_path="src/code_graph/resolver.py", repo="code-graph-mcp")
 ] }
 ```
 
-`in_project` is true when the target is a node in the graph. Imported constants, such as `EDGE_CALLS` from `models.py`, show as `false`: constants are not nodes.
+`in_project` is true when the target is a node in the graph. Imported constants like `EDGE_CALLS` from `models.py` come back as `false`, because constants aren't nodes.
 
 ### Read just the code you need
 
-Once the graph has pointed at the right symbol, fetch only its lines:
+Once the graph has pointed you at the right symbol, fetch only its lines:
 
 ```text
 get_code_snippet(qualified_name="src.code_graph.resolver._escape_like", repo="code-graph-mcp")
@@ -150,14 +150,18 @@ The code is read from the source when you ask for it, never from the database.
 
 ## Tips
 
-- **Start with the graph.** Tell your agent, for example in the project's `CLAUDE.md`, to use the `code-graph` tools for "where is", "what calls" and "what depends on" questions before searching files.
-- **Scope with `repo`** whenever more than one repository is indexed. The same qualified name can exist in several.
-- **Re-index after changes** when self-hosted (`reindex_repository`). Answers reflect the last index, not your working tree.
-- **Unresolved is not an error.** It means the call leaves the repository, or its target is ambiguous.
+I'd recommend telling your agent to start with the graph. Put a line in the project's `CLAUDE.md` saying to use the `code-graph` tools for "where is", "what calls" and "what depends on" questions before it searches files.
+
+Scope your calls with `repo` whenever more than one repository is indexed, since the same qualified name can exist in several of them.
+
+When you're self-hosted, re-index after changes with `reindex_repository`. Answers reflect the last index, not your working tree.
+
+And unresolved isn't an error. It just means the call leaves the repository, or its target is ambiguous.
 
 ## Access and tokens
 
-- Self-hosted: the MCP server accepts only requests carrying `CODE_GRAPH_TOKEN`, and binds to `127.0.0.1`.
-- Hosted: each token is a random 256-bit value, shown once when it is created and stored only as a SHA-256 hash. A token reaches exactly one graph, the one it was issued for; no tool argument can select another. The administrator can revoke it at any time.
+Self-hosted, the MCP server only accepts requests carrying `CODE_GRAPH_TOKEN`, and it only listens on `127.0.0.1`.
 
-See [security and data handling](/docs/security) for the full model, and the [tool reference](/docs/api) for every argument.
+Hosted, each token is a random 256-bit value. It's shown once when it's created and only its SHA-256 hash is stored. A token reaches exactly one graph, the one it was issued for, and no tool argument can point it at another. The administrator can revoke it at any time.
+
+[Security and data handling](/docs/security) covers the full model, and the [tool reference](/docs/api) lists every argument.

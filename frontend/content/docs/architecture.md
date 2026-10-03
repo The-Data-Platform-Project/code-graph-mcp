@@ -1,10 +1,6 @@
 ## Overview
 
-ContextForge has three parts:
-
-1. an **indexer** that parses repositories into a graph,
-2. a **Postgres graph** that holds structure only, and
-3. **two ways to read it**: the graph explorer (a Next.js web app) and an MCP server for agents.
+ContextForge has three parts. An indexer parses repositories into a graph, a Postgres database holds that graph (structure only), and two front doors read it: the graph explorer, which is a Next.js web app, and an MCP server for agents.
 
 ```text
   repository files ──► indexer ──► Postgres graph ──┬──► MCP server  ──► AI agent
@@ -16,21 +12,21 @@ ContextForge has three parts:
 
 ## Indexing pipeline
 
-Indexing is written in Python and runs inside the self-hosted stack's `code-graph-mcp` container.
+The indexer is written in Python and runs inside the self-hosted stack's `code-graph-mcp` container. Here's what happens to a repository:
 
-1. **Walk.** The repository directory is walked lazily, pruning dot-directories and build or dependency folders (`node_modules`, `venv`, `dist`, `build`, `vendor`, `target`, …).
-2. **Parse.** Each supported file is parsed with **tree-sitter**, using a pinned grammar per language. JSON and generic config files are handled without a grammar.
-3. **Extract.** A per-language extractor turns the syntax tree into nodes (files, classes, functions, methods, interfaces, config files, services), edges, and an import map. JavaScript extraction treats anonymous scopes (IIFEs, callbacks) as transparent, so named functions inside them still become nodes.
-4. **Buffer and commit.** Rows are buffered as plain values and committed every 200 files. Each parse tree is discarded before the next file is read, so **only one tree is ever in memory**.
-5. **Resolve.** After the whole repository is in, raw call, inheritance and type references are resolved to real nodes: import map → `self`/`cls`/`this` → same file → unique name in the repository → left unresolved. Root-relative asset and template references (`/static/app.js`, `{% extends "base.html" %}`) resolve by a unique trailing-path match. The resolver streams edges with a server-side cursor, so memory stays flat on large repositories.
+1. It walks the repository directory lazily, pruning dot-directories and build or dependency folders (`node_modules`, `venv`, `dist`, `build`, `vendor`, `target`, …).
+2. It parses each supported file with tree-sitter, using a pinned grammar per language. JSON and generic config files don't need a grammar.
+3. A per-language extractor turns the syntax tree into nodes (files, classes, functions, methods, interfaces, config files, services), edges, and an import map. The JavaScript extractor treats anonymous scopes like IIFEs and callbacks as transparent, so named functions inside them still become nodes.
+4. Rows are buffered as plain values and committed every 200 files. Each parse tree is thrown away before the next file is read, so only one tree is ever in memory.
+5. Once the whole repository is in, raw call, inheritance and type references are resolved to real nodes, in this order: import map, then `self`/`cls`/`this`, then same file, then a unique name in the repository, and otherwise it's left unresolved. Root-relative asset and template references (`/static/app.js`, `{% extends "base.html" %}`) resolve by a unique trailing-path match. The resolver streams edges with a server-side cursor, so memory stays flat even on large repositories.
 
-`reindex_repository` hashes each file's content and repeats steps 2–4 only for files that changed, then re-runs resolution.
+`reindex_repository` hashes each file's content and repeats steps 2–4 only for the files that changed, then runs resolution again.
 
-Measured in the container: about 45 MiB idle and **122 MiB peak** indexing a 700+ file, 75k-edge repository, under a hard 500 MiB limit.
+Measured in the container, it sits at about 45 MiB idle and peaked at 122 MiB indexing a 700+ file, 75k-edge repository, under a hard 500 MiB limit.
 
 ## The graph
 
-Five tables, identical in every deployment:
+There are five tables, the same in every deployment:
 
 | Table | Holds |
 |---|---|
@@ -40,11 +36,11 @@ Five tables, identical in every deployment:
 | `files` | Path and content hash per file, for incremental re-indexing |
 | `imports` | Each file's import bindings, used by resolution and `get_dependencies` |
 
-No table holds source text.
+None of them holds source text.
 
 ### Tenancy
 
-Each graph lives in its own Postgres schema, `tenant_<slug>`, holding those five tables. A separate `control` schema records tenants, MCP tokens (as hashes) and repository connections. The web app qualifies every query with the schema of the signed-in tenant, or of the tenant a token belongs to. A schema name never comes from a request parameter.
+Each graph lives in its own Postgres schema, `tenant_<slug>`, with those five tables inside. A separate `control` schema records the tenants, the MCP tokens (as hashes) and the repository connections. The web app qualifies every query with the schema of the signed-in tenant, or of the tenant a token belongs to, and a schema name never comes from a request parameter.
 
 ## Serving the graph
 
@@ -58,7 +54,7 @@ Each graph lives in its own Postgres schema, `tenant_<slug>`, holding those five
                                   source previews ─┴─► MCP server reads /workspaces (read-only)
 ```
 
-Docker Compose runs `postgres`, `code-graph-mcp` and `app`, all bound to `127.0.0.1`. The MCP container is hardened: unprivileged user, read-only root filesystem, no privilege escalation, and a 500 MiB memory limit. It makes no outbound network calls.
+Docker Compose runs `postgres`, `code-graph-mcp` and `app`, all bound to `127.0.0.1`. The MCP container runs as an unprivileged user with a read-only root filesystem, no privilege escalation and a 500 MiB memory limit, and it makes no outbound network calls.
 
 ### Hosted
 
@@ -68,9 +64,9 @@ Docker Compose runs `postgres`, `code-graph-mcp` and `app`, all bound to `127.0.
   Browser ──sign-in───────────► /graph  ──┘                     └──► GitHub (source text, on request)
 ```
 
-The web app serves both the explorer and the MCP endpoint. Its MCP tools are a TypeScript twin of the Python read tools, with the same names, arguments and results. `MCP_BACKEND=proxy` can forward `/api/mcp` to a Python server instead, without changing the client URL. The hosted deployment does not index: its graphs are indexed in a self-hosted stack and loaded by the administrator.
+Here the web app serves both the explorer and the MCP endpoint. Its MCP tools are a TypeScript twin of the Python read tools, with the same names, arguments and results. If you set `MCP_BACKEND=proxy`, `/api/mcp` forwards to a Python server instead, and clients don't have to change their URL. The hosted deployment doesn't index. Its graphs are indexed in a self-hosted stack and loaded by the administrator.
 
-Source previews use `SOURCE_PROVIDER`: `mcp` reads through the self-hosted MCP container, `github` fetches from the repository connected to that graph, and `none` turns previews off.
+Source previews depend on `SOURCE_PROVIDER`. With `mcp` they're read through the self-hosted MCP container, with `github` they're fetched from the repository connected to that graph, and `none` turns previews off.
 
 ## Technology
 
@@ -81,6 +77,6 @@ Source previews use `SOURCE_PROVIDER`: `mcp` reads through the self-hosted MCP c
 | Web app and hosted MCP | Next.js 15, React 19, TypeScript, the MCP TypeScript SDK, d3 |
 | Packaging | Docker Compose; Vercel for the hosted app |
 
-## Extending languages
+## Adding a language
 
-A language is a grammar dependency, one extractor class, and one line in the language registry (`src/code_graph/languages.py`). The rest of the pipeline is unchanged. The repository README covers the details.
+Adding a language comes down to a grammar dependency, one extractor class, and one line in the language registry (`src/code_graph/languages.py`). The rest of the pipeline doesn't change. The repository README covers the details.
