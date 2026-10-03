@@ -26,7 +26,13 @@ export default async function LoginPage({
           autoComplete="current-password" autoFocus required
         />
         {next && <input type="hidden" name="next" value={next} />}
-        {error && <p className="login-error">That password is not right.</p>}
+        {error === "config" ? (
+          <p className="login-error">
+            Sign-in is not set up on this deployment. The administrator needs to configure it.
+          </p>
+        ) : error ? (
+          <p className="login-error">That password is not right.</p>
+        ) : null}
         <button type="submit" className="readme-btn login-submit">Sign in</button>
         <p className="login-note">
           Single-owner access for now. Google and GitHub sign-in will replace this.{" "}

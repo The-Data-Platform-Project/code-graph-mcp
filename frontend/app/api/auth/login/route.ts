@@ -35,13 +35,29 @@ export async function POST(request: NextRequest) {
   // Only same-site relative paths, so the login form cannot be used as an
   // open redirect.
   const target = next.startsWith("/") && !next.startsWith("//") ? next : DEFAULT_TARGET;
+  const back = (error: string) => {
+    const params = new URLSearchParams({ error });
+    if (target !== DEFAULT_TARGET) params.set("next", target);
+    return seeOther(`/login?${params}`);
+  };
 
-  if (!password || !sameSecret(password, ownerPassword())) {
+  // A deployment without (or with too weak) sign-in settings — a preview
+  // without OWNER_PASSWORD, say — must answer with a page, not a 500. The
+  // reason goes to the server log; the visitor only learns sign-in is off.
+  let expected: string;
+  let secret: string;
+  try {
+    expected = ownerPassword();
+    secret = sessionSecret();
+  } catch (err) {
+    console.error("sign-in is not configured:", err instanceof Error ? err.message : err);
+    return back("config");
+  }
+
+  if (!password || !sameSecret(password, expected)) {
     // A fixed delay makes guessing slow without keeping any state.
     await new Promise((r) => setTimeout(r, 600));
-    const back = new URLSearchParams({ error: "1" });
-    if (target !== DEFAULT_TARGET) back.set("next", target);
-    return seeOther(`/login?${back}`);
+    return back("1");
   }
 
   const token = await signSession(
@@ -51,7 +67,7 @@ export async function POST(request: NextRequest) {
       role: "owner",
       exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
     },
-    sessionSecret(),
+    secret,
   );
   const res = seeOther(target);
   res.cookies.set(SESSION_COOKIE, token, {
