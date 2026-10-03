@@ -488,3 +488,11 @@
   border-radius: 8px; padding: 5px 10px; font-size: 11px; font-weight: 600; cursor: pointer;
 }
 .sidebar-footer button:hover { border-color: var(--gray-300); }
+
+/* Links to the guides, above the footer. */
+.sidebar-links {
+  padding: 10px 24px; border-top: 1px solid var(--gray-200);
+  display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px;
+}
+.sidebar-links a { color: var(--teal-700); font-weight: 600; text-decoration: none; }
+.sidebar-links a:hover { text-decoration: underline; }

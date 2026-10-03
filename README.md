@@ -240,10 +240,12 @@ per-user graphs, an admin portal) is in [docs/FUTURE_STATE.md](docs/FUTURE_STATE
 
 | | |
 |---|---|
-| Graph page | https://code-graph-viz.vercel.app (sign in with `OWNER_PASSWORD`) |
+| Site and docs | https://code-graph-viz.vercel.app (public: landing page, `/product`, `/roadmap`, `/faq`, `/docs`) |
+| Graph page | https://code-graph-viz.vercel.app/graph (sign in with `OWNER_PASSWORD`) |
+| Admin guide | https://code-graph-viz.vercel.app/admin/guide (owner only) |
 | MCP endpoint | https://code-graph-viz.vercel.app/api/mcp (needs a `cgk_` token) |
 | Vercel project | `code-graph-viz` (team *Ismail's projects*), Root Directory `frontend`, Next.js, functions in `sin1` |
-| Production branch | `claude/hopeful-noether-ff21ui`, **temporarily**; see below |
+| Production branch | `main`; every other branch gets a preview deployment |
 | Database | Supabase `rryfmnktebyvfxaftvyv`, Singapore (`ap-southeast-1`); the app connects as the read-only `codegraph_app` role through the transaction pooler (port 6543) |
 | Graph loaded | tenant `owner` (`tenant_owner` schema): 5 repos, 1,700 nodes, 8,952 edges, from `data/graph.db` with `--exclude telemetry-pipeline` |
 
@@ -311,9 +313,9 @@ blocks until the build finishes. What each diagnostic is for is in
 
 #### Still to do
 
-- **Production builds from `claude/hopeful-noether-ff21ui`.** Every push to it
-  redeploys production. Once the branch is merged, switch production back to
-  `main` (Vercel → Settings → Environments → Production → Branch Tracking).
+- **Point `contextforge.ai` at the Vercel project.** Add the domain under
+  Settings → Domains, create the DNS records Vercel shows, then set `SITE_URL`
+  to it so canonical links and the sitemap use it.
 - **Secrets are set for Production only.** `SESSION_SECRET`, `PGPOOL_MAX`,
   `SOURCE_PROVIDER` and `MCP_BACKEND` are on Preview too, but `DATABASE_URL`,
   `DATABASE_CA_CERT`, `OWNER_PASSWORD` and `GITHUB_TOKEN` are not, so preview

@@ -55,7 +55,8 @@ Everything Docker/pytest runs via `wsl -e bash -lc "..."`.
   truncates the five tables on the target first — `nodes`/`edges` key on a
   serial id, so appending would duplicate the graph — then resets the id
   sequences and verifies row counts.
-- Browser UI: `http://127.0.0.1:3000/` — the Next.js app (`frontend/`). The
+- Browser UI: `http://127.0.0.1:3000/graph` — the explorer in the Next.js app
+  (`frontend/`); `/` is the public ContextForge site and `/docs` its user docs. The
   container also still serves the standalone `visualizer/index.html` at
   `http://127.0.0.1:8765/` as a zero-dependency fallback; the two share
   `lib/render.js`, but the React panel is a separate implementation, so a UI
@@ -82,6 +83,16 @@ built vs designed) and docs/ADMIN_GUIDE.md (deploy/operate).
   `MCP_BACKEND=proxy` forwards to the Python server.
 - `lib/render.js` is lifted verbatim from `visualizer/index.html` so the
   markdown/highlighting stays identical to the version under test.
+- **Two route groups, two stylesheets.** `app/(app)` (explorer at `/graph`, `/login`)
+  loads `globals.css`; `app/(site)` (landing, `/product`, `/roadmap`, `/faq`,
+  `/docs/**`, `/admin/guide`) loads `styles/site.css`, every rule scoped under `.cf`.
+  The root layout loads neither, and links between the groups are plain `<a>` so
+  each page gets exactly one. Docs are Markdown in `content/docs/` (imported as
+  strings, rendered at build by `lib/markdown.ts`); the admin guide is
+  `content/admin/guide.md`, `server-only`, rendered per request after
+  `requireAdmin()` (`lib/access.ts`). The public demo graph
+  (`content/demo-graph.json`) holds this repo only — never another repo's data.
+  Public claims must match the code: what is planned goes on `/roadmap`, labelled.
 - Supabase TLS: node-postgres verifies `sslmode=require` fully, so the app needs
   `DATABASE_CA_CERT` (Supabase's CA PEM). Never disable verification instead.
 
