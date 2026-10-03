@@ -44,7 +44,7 @@ All commands run in WSL, in the project directory, with the dev venv:
 
 ```bash
 cd '/mnt/f/The Data Platform Project/Code Graph/code-graph-mcp'
-git pull                       # branch claude/hopeful-noether-ff21ui
+git pull                       # branch main
 PY=~/cgvenv/bin/python
 ```
 
@@ -158,11 +158,9 @@ exactly the URL that worked, percent-encoded. A mistyped value can't be read
 back, and only shows up as `password authentication failed` in the function
 logs.
 
-**Which branch deploys.** The code is on `claude/hopeful-noether-ff21ui`,
-which is not merged into `main`. Either merge it, or set this branch as the
-production branch (**Settings → Environments → Production → Branch
-Tracking**). Production currently tracks this branch; switch it back to
-`main` after the merge. A preview deployment works for the page. But if **Deployment
+**Which branch deploys.** Production tracks `main` (**Settings → Environments
+→ Production → Branch Tracking**); every other branch gets a preview
+deployment. A preview deployment works for the public pages. But if **Deployment
 Protection** is on for previews, Vercel answers Claude Code's MCP calls with
 its own login wall, so use production for MCP.
 
@@ -172,7 +170,7 @@ Deploy, then check:
 curl https://<app>/api/health          # {"status":"ok"}
 ```
 
-Open `https://<app>/`, sign in with `OWNER_PASSWORD`, and click a repo (README)
+Open `https://<app>/graph`, sign in with `OWNER_PASSWORD`, and click a repo (README)
 and a node (source preview).
 
 ### 2.6 Connect Claude Code

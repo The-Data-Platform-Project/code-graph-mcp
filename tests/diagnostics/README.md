@@ -191,7 +191,8 @@ Checks the app without logging in:
 | Check | Expect | Proves |
 |---|---|---|
 | `/api/health` | 200 | the functions run |
-| `/` | 307 | the page gate redirects to `/login` |
+| `/`, `/docs` | 200 | the public site and docs render without signing in |
+| `/graph`, `/admin/guide` | 307 | the explorer and the admin guide send signed-out visitors to `/login` |
 | `/login` | 200 | the login page renders |
 | `/api/mcp`, no token | 401 | the MCP route answers and rejects anonymous calls |
 | `/api/mcp`, fake token | 401 | **the database works**: rejecting a token means looking it up in `control.mcp_tokens` |

@@ -8,7 +8,9 @@
 #
 # What each check proves:
 #   /api/health           200   the functions run at all
-#   /                     307   the page gate redirects to /login
+#   /, /docs              200   the public site and docs render without signing in
+#   /graph                307   the explorer is gated: signed-out visitors go to /login
+#   /admin/guide          307   so is the admin guide
 #   /login                200   the login page renders
 #   /api/mcp, no token    401   the MCP route answers and rejects anonymous calls
 #   /api/mcp, fake token  401   the database works: rejecting a token means
@@ -38,7 +40,10 @@ check() {  # label, expected code, curl args...
 
 echo "smoke-testing $B"
 check "/api/health"          200 "$B/api/health"
-check "/ -> /login"          307 "$B/"
+check "/ (public site)"       200 "$B/"
+check "/docs (public docs)"  200 "$B/docs"
+check "/graph -> /login"     307 "$B/graph"
+check "/admin/guide -> /login" 307 "$B/admin/guide"
 check "/login"               200 "$B/login"
 check "/api/mcp no token"    401 -X POST "$B/api/mcp" -H 'content-type: application/json' -d '{}'
 check "/api/mcp fake token"  401 -X POST "$B/api/mcp" \

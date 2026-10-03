@@ -1,4 +1,9 @@
+import type { Metadata } from "next";
+import { Mark } from "@/components/brand/Logo";
+
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = { title: "Sign in", robots: { index: false, follow: false } };
 
 export default async function LoginPage({
   searchParams,
@@ -11,13 +16,9 @@ export default async function LoginPage({
       <form className="login-card" method="post" action="/api/auth/login">
         <div className="logo">
           <div className="logo-mark">
-            <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"
-                 strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M12 3v4m0 10v4M3 12h4m10 0h4" />
-            </svg>
+            <Mark mono="white" size={22} />
           </div>
-          <div className="logo-text">Code<span>Graph</span></div>
+          <div className="logo-text">Context<span>Forge</span></div>
         </div>
         <label className="section-label" htmlFor="password">Owner password</label>
         <input
@@ -28,7 +29,8 @@ export default async function LoginPage({
         {error && <p className="login-error">That password is not right.</p>}
         <button type="submit" className="readme-btn login-submit">Sign in</button>
         <p className="login-note">
-          Single-owner access for now. Google and GitHub sign-in will replace this.
+          Single-owner access for now. Google and GitHub sign-in will replace this.{" "}
+          <a href="/">Back to the site</a>
         </p>
       </form>
     </main>

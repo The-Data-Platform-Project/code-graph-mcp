@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Mark } from "./brand/Logo";
 import GraphCanvas from "./GraphCanvas";
 import PreviewPanel, { PreviewTarget } from "./PreviewPanel";
 import {
@@ -12,7 +13,7 @@ import {
   KIND_COLORS,
 } from "./types";
 
-export default function Explorer() {
+export default function Explorer({ canAdminister = false }: { canAdminister?: boolean }) {
   const [data, setData] = useState<GraphPayload | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [repo, setRepo] = useState("");
@@ -112,15 +113,10 @@ export default function Explorer() {
         <div className="sidebar-header">
           <div className="logo">
             <div className="logo-mark">
-              <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"
-                   strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M12 3v4m0 10v4M3 12h4m10 0h4" />
-                <path d="M5.6 5.6l2.85 2.85m7.1 7.1l2.85 2.85M5.6 18.4l2.85-2.85m7.1-7.1l2.85-2.85" />
-              </svg>
+              <Mark mono="white" size={22} />
             </div>
             <div className="logo-text">
-              Code<span>Graph</span>
+              Context<span>Forge</span>
             </div>
           </div>
           <div className="stats-row" id="stats">
@@ -225,6 +221,13 @@ export default function Explorer() {
             </div>
           </div>
         </div>
+
+        {/* Plain links: the guides are part of the site, with its own stylesheet. */}
+        <nav className="sidebar-links" aria-label="Guides">
+          <a href="/docs/user-guide">User guide</a>
+          {canAdminister && <a href="/admin/guide">Admin guide</a>}
+          <a href="/">Home</a>
+        </nav>
 
         <form className="sidebar-footer" method="post" action="/api/auth/logout">
           <span>{data?.repos.length ?? 0} repositor{data?.repos.length === 1 ? "y" : "ies"}</span>

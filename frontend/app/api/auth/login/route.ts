@@ -5,6 +5,8 @@ import { SESSION_COOKIE, SESSION_TTL_SECONDS, signSession } from "@/lib/session"
 
 export const dynamic = "force-dynamic";
 
+const DEFAULT_TARGET = "/graph";
+
 function sameSecret(a: string, b: string): boolean {
   // Hash first so the comparison is over equal-length buffers and runs in
   // constant time regardless of how long the guess is.
@@ -28,16 +30,17 @@ function seeOther(location: string): NextResponse {
 export async function POST(request: NextRequest) {
   const form = await request.formData().catch(() => null);
   const password = String(form?.get("password") ?? "");
-  const next = String(form?.get("next") ?? "/");
+  // After signing in, the explorer — "/" is the public landing page now.
+  const next = String(form?.get("next") ?? DEFAULT_TARGET);
   // Only same-site relative paths, so the login form cannot be used as an
   // open redirect.
-  const target = next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  const target = next.startsWith("/") && !next.startsWith("//") ? next : DEFAULT_TARGET;
 
   if (!password || !sameSecret(password, ownerPassword())) {
     // A fixed delay makes guessing slow without keeping any state.
     await new Promise((r) => setTimeout(r, 600));
     const back = new URLSearchParams({ error: "1" });
-    if (target !== "/") back.set("next", target);
+    if (target !== DEFAULT_TARGET) back.set("next", target);
     return seeOther(`/login?${back}`);
   }
 
