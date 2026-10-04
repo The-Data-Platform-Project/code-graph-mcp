@@ -56,10 +56,10 @@ personal token, and that token can only ever reach their own graph.
 
 | Plane | What it holds | Where | Status |
 |---|---|---|---|
-| **Identity** | who a person is | Supabase Auth (Google, GitHub) | designed |
-| **Control** | tenants, members, tokens, repo connections, jobs, audit | `control` schema | tenants, tokens, repo connections built |
-| **Data** | one graph per tenant | `tenant_<slug>` schemas | built for the owner |
-| **Compute** | serving (MCP + page), indexing | Vercel; a free container for the indexer | serving built; indexing designed |
+| **Identity** | who a person is | GitHub OAuth app (identity only) | GitHub built; Google designed |
+| **Control** | tenants, users, members, tokens, GitHub tokens, repo connections, jobs, audit | `control` schema | all built except audit |
+| **Data** | one graph per tenant | `tenant_<slug>` schemas | built; provisioned on approval |
+| **Compute** | serving (MCP + page), indexing | Vercel; AWS Lambda for the indexer | built |
 
 ---
 
@@ -87,6 +87,39 @@ personal token, and that token can only ever reach their own graph.
    app connects server-side only, with CA-verified TLS.
 
 ---
+
+## Built on `feature/graph-etl` (2026-10-04)
+
+Sections 1, 2 and 4 below are built, with these changes from their design:
+
+- **Sign-in is a GitHub OAuth app, not Supabase Auth.** Fewer moving parts
+  (Postgres stays the only dependency), and it works the same locally. The
+  consent asks only `read:user user:email`; the OAuth token is discarded after
+  reading the profile. `control.users` is keyed by GitHub id (bigserial ids,
+  not `auth.users` uuids). Google sign-in is still designed, not built.
+- **Repository access is fine-grained personal access tokens, not a GitHub
+  App.** A tenant keeps any number (`control.github_tokens`), each limited on
+  GitHub to the repositories its creator picked. GitHub has no API to mint
+  them, so `/settings` opens GitHub's form pre-filled (read-only Contents and
+  Metadata, optionally Webhooks) and takes the token back. Stored
+  AES-256-GCM-encrypted under `GITHUB_TOKEN_KEY` with the tenant id as
+  associated data; `repo_connections.github_token_id` picks one per repo, and
+  a composite foreign key keeps it within the tenant.
+- **Approval provisions through `control.provision_tenant`,** a SECURITY
+  DEFINER function, so the app's role still cannot run DDL. Slugs are
+  `gh_<github id>`. Platform admin is `users.is_platform_admin`, separate
+  from tenant roles. The admin portal is a **People** section on `/settings`
+  (approve, suspend, reactivate), not yet the full `/admin` of §3.
+- **The worker runs on AWS Lambda** behind SQS, triggered daily by EventBridge
+  Scheduler, on push by a GitHub webhook or Actions workflow (per-connection
+  HMAC secrets), and on demand from the app. It downloads commit tarballs
+  instead of cloning (no git binary), skips unchanged commits, and pins
+  `git_ref` to the indexed commit. Deployed by GitHub Actions with OIDC; see
+  [INDEXER_AWS.md](INDEXER_AWS.md).
+
+Still open from §2: `mcp_tokens.user_id` and self-service MCP tokens (the
+administrator mints them for approved tenants); suspending a person does not
+revoke their tenant's MCP tokens.
 
 ## What is designed, not built
 
@@ -233,13 +266,15 @@ built, in `frontend/app/api/mcp/route.ts`.
 
 ## Order of work
 
-1. **Now (built):** owner-only cloud app with the MCP endpoint, Supabase
+1. **Built:** owner-only cloud app with the MCP endpoint, Supabase
    graph, GitHub previews. See ADMIN_GUIDE.md.
-2. Supabase Auth plus the landing page; `getViewer()` switches over; the
-   owner links their account.
-3. `control.users` and `members`, the pending → approve flow, and `/admin`
-   Users and Tokens.
-4. GitHub App, the index job queue, and the Python worker on a container.
-   `/admin` Jobs.
+2. **Built (GitHub OAuth instead of Supabase Auth):** sign-in and the landing
+   page; `getViewer()` reads GitHub users; the owner signs in as
+   `OWNER_GITHUB_LOGIN`. Google: still to do.
+3. **Built:** `control.users` and `members`, the pending → approve flow
+   (People on `/settings`). Still to do: `/admin` Tokens.
+4. **Built (fine-grained tokens instead of a GitHub App; Lambda instead of a
+   container):** the index job queue, the Python worker, push re-indexing.
+   Still to do: `/admin` Jobs across tenants.
 5. Per-request tenant in the Python server; proxy mode for all tenants.
 6. Hardening: per-tenant roles, token expiry, rate limits, quotas.

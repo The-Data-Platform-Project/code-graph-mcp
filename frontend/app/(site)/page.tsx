@@ -268,7 +268,7 @@ export default function Home() {
             <div className="mode">
               <span className="badge badge-available">Hosted · available</span>
               <h3 className="h3">Serve a graph from the cloud</h3>
-              <p>The web app on Vercel serves the explorer and <code>/api/mcp</code> from a Supabase database. It serves graphs indexed in a self-hosted stack; hosted indexing is <Link href="/roadmap" style={{ color: "var(--sky)" }}>planned</Link>.</p>
+              <p>The web app on Vercel serves the explorer and <code>/api/mcp</code> from a Supabase database. People sign in with GitHub and connect repositories with fine-grained tokens; a cloud indexer on AWS keeps them current, daily and on every push.</p>
             </div>
           </div>
         </div>
@@ -294,10 +294,9 @@ export default function Home() {
                 <Link className="link-arrow" href="/roadmap">See the roadmap</Link>
               </div>
               <ul aria-label="Planned capabilities">
-                <li>Sign in with Google or GitHub, with owner approval</li>
-                <li>Choose repositories through a GitHub App</li>
-                <li>Cloud indexing with background jobs and status</li>
-                <li>Re-indexing when repositories change</li>
+                <li>Sign in with Google</li>
+                <li>An admin portal with an audit log</li>
+                <li>Self-service MCP tokens, quotas and rate limits</li>
                 <li>Organization-level, multi-repository exploration</li>
                 <li>Richer architectural grouping and more languages</li>
                 <li>History across branches and commits</li>

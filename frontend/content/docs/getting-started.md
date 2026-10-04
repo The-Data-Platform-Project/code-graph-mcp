@@ -5,11 +5,11 @@ This guide runs ContextForge on your own machine with Docker, indexes one reposi
 | | Self-hosted (this guide) | Hosted |
 |---|---|---|
 | What runs | Postgres, the MCP server (indexer and tools), and the web app, in Docker Compose | The web app on Vercel, reading a graph in Supabase |
-| Indexing | Yes, with the `index_repository` and `reindex_repository` MCP tools | No. It serves graphs that were indexed in a self-hosted stack and loaded by an administrator. |
+| Indexing | Yes, with the `index_repository` and `reindex_repository` MCP tools | Yes, where the cloud indexer is deployed: connected GitHub repositories are indexed daily, on every push, and on demand from **Settings** |
 | Where source comes from | Your disk, mounted read-only | GitHub, fetched on request for previews |
-| Who can use it | You, on `127.0.0.1` | The owner, after signing in |
+| Who can use it | You, on `127.0.0.1` | The owner, and people the owner approves after they sign in with GitHub |
 
-Self-hosting is the only way to index repositories today. Hosted onboarding (sign in, connect GitHub, index in the cloud) is on the [roadmap](/roadmap).
+This guide covers self-hosting. For the hosted app, see [connecting GitHub repositories](/docs/user-guide#connecting-github-repositories-hosted) in the user guide.
 
 ## Prerequisites
 

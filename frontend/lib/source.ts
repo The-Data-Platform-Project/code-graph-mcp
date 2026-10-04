@@ -5,8 +5,8 @@
  * SOURCE_PROVIDER:
  *
  *   github  the repo recorded for this tenant in control.repo_connections,
- *           read through the GitHub contents API (GITHUB_TOKEN for private
- *           repos). The cloud default.
+ *           read through the GitHub contents API with the connection's own
+ *           fine-grained token (falling back to GITHUB_TOKEN). The cloud default.
  *   mcp     the code-graph container's /api/file and /api/readme — for local
  *           or tunnelled setups where the repos are on disk.
  *   none    previews switched off; the graph itself still works.
@@ -15,7 +15,8 @@
  * (queries.get_file_source / get_repo_readme), so the UI does not care which
  * one answered.
  */
-import { repoConnection } from "./control";
+import { openGithubToken } from "./accounts";
+import { repoConnection, type RepoConnection } from "./control";
 import { githubToken, sourceProvider } from "./env";
 import { mcpGet } from "./mcp";
 import type { Tenant } from "./tenancy";
@@ -71,13 +72,18 @@ function safeRelPath(path: string): string | null {
 
 // ── GitHub ──────────────────────────────────────────────────────────────────
 
-async function githubFetch(url: string, accept: string): Promise<Response> {
+/** The connection's own token if it has one, else the deployment's GITHUB_TOKEN. */
+function tokenFor(tenant: Tenant, conn: RepoConnection): string {
+  if (conn.tokenCiphertext) return openGithubToken(tenant.id, conn.tokenCiphertext);
+  return githubToken();
+}
+
+async function githubFetch(url: string, accept: string, token: string): Promise<Response> {
   const headers: Record<string, string> = {
     Accept: accept,
     "X-GitHub-Api-Version": "2022-11-28",
     "User-Agent": "code-graph",
   };
-  const token = githubToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   return fetch(url, { headers, cache: "no-store", signal: AbortSignal.timeout(15_000) });
 }
@@ -85,12 +91,13 @@ async function githubFetch(url: string, accept: string): Promise<Response> {
 function githubError(status: number, what: string): SourceResult {
   if (status === 404) {
     return notFound(
-      `${what} not found on GitHub — the repo is private and GITHUB_TOKEN cannot see it, ` +
+      `${what} not found on GitHub — the repo is private and the connection's token cannot ` +
+        "see it (add or fix one on /settings), " +
         "or the path or ref no longer exists",
     );
   }
   if (status === 403 || status === 429) {
-    return notFound("GitHub rate limit or permission refusal — set GITHUB_TOKEN");
+    return notFound("GitHub rate limit or permission refusal — check the connection's token");
   }
   return notFound(`GitHub returned ${status} for ${what}`);
 }
@@ -118,6 +125,7 @@ async function githubFile(tenant: Tenant, repo: string, path: string): Promise<S
     const res = await githubFetch(
       `https://api.github.com/repos/${conn.externalRepo}/contents/${rel}${ref}`,
       "application/vnd.github.raw",
+      tokenFor(tenant, conn),
     );
     if (!res.ok) return githubError(res.status, path);
     return textResult(repo, path, new Uint8Array(await res.arrayBuffer()));
@@ -134,6 +142,7 @@ async function githubReadme(tenant: Tenant, repo: string): Promise<SourceResult>
     const res = await githubFetch(
       `https://api.github.com/repos/${conn.externalRepo}/readme${ref}`,
       "application/vnd.github+json",
+      tokenFor(tenant, conn),
     );
     if (!res.ok) return githubError(res.status, "README");
     const body = (await res.json()) as { name: string; content: string; encoding: string };

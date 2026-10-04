@@ -11,7 +11,12 @@ data, and therefore must survive a reindex:
 - `tenants`           one row per tenant, naming its schema
 - `mcp_tokens`        hashed bearer tokens; a token resolves to exactly one tenant
 - `repo_connections`  where a tenant's repository comes from (e.g. a GitHub repo),
-                      used to fetch source text once the desktop is out of the loop
+                      used to fetch source text once the desktop is out of the loop,
+                      and whether the indexer refreshes it daily and on push
+- `users`, `members`  people who signed in with GitHub, and which tenant each may use
+- `github_tokens`     a tenant's fine-grained GitHub tokens, encrypted (secretbox.py);
+                      a repo connection names the one that can read its repository
+- `index_jobs`        the indexer's work log: one row per index run (etl/jobs.py)
 
 A repository's GitHub coordinates deliberately do not live on the graph's own
 `repos` table: `index_full` deletes and recreates that row, so a full reindex
@@ -79,6 +84,99 @@ CREATE TABLE IF NOT EXISTS control.repo_connections (
 );
 
 CREATE INDEX IF NOT EXISTS idx_mcp_tokens_tenant ON control.mcp_tokens(tenant_id);
+
+-- People, identified by their GitHub account. Signing in creates a 'pending'
+-- row; a platform admin approves it, which provisions the user's own tenant.
+CREATE TABLE IF NOT EXISTS control.users (
+    id                 BIGSERIAL PRIMARY KEY,
+    github_id          BIGINT NOT NULL UNIQUE,
+    github_login       TEXT NOT NULL,
+    display_name       TEXT,
+    email              TEXT,
+    avatar_url         TEXT,
+    status             TEXT NOT NULL DEFAULT 'pending'
+                       CHECK (status IN ('pending', 'active', 'suspended')),
+    is_platform_admin  BOOLEAN NOT NULL DEFAULT false,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    approved_at        TIMESTAMPTZ,
+    last_login_at      TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS control.members (
+    tenant_id  BIGINT NOT NULL REFERENCES control.tenants(id) ON DELETE CASCADE,
+    user_id    BIGINT NOT NULL REFERENCES control.users(id) ON DELETE CASCADE,
+    role       TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'member')),
+    PRIMARY KEY (tenant_id, user_id)
+);
+
+-- Fine-grained GitHub tokens. A tenant keeps as many as it likes, each scoped
+-- on GitHub to its own set of repositories. Only ciphertext is stored
+-- (AES-256-GCM under GITHUB_TOKEN_KEY, see secretbox.py); the app needs the
+-- plaintext back to call GitHub, so a hash would not do.
+CREATE TABLE IF NOT EXISTS control.github_tokens (
+    id                BIGSERIAL PRIMARY KEY,
+    tenant_id         BIGINT NOT NULL REFERENCES control.tenants(id) ON DELETE CASCADE,
+    created_by        BIGINT REFERENCES control.users(id) ON DELETE SET NULL,
+    label             TEXT NOT NULL CHECK (length(label) BETWEEN 1 AND 80),
+    github_login      TEXT NOT NULL,
+    token_ciphertext  TEXT NOT NULL,
+    token_hint        TEXT NOT NULL,
+    expires_at        TIMESTAMPTZ,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_checked_at   TIMESTAMPTZ,
+    last_error        TEXT,
+    UNIQUE (id, tenant_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_github_tokens_tenant ON control.github_tokens(tenant_id);
+
+ALTER TABLE control.repo_connections
+    ADD COLUMN IF NOT EXISTS github_token_id  BIGINT,
+    ADD COLUMN IF NOT EXISTS branch           TEXT,
+    ADD COLUMN IF NOT EXISTS index_daily      BOOLEAN NOT NULL DEFAULT true,
+    ADD COLUMN IF NOT EXISTS index_on_push    BOOLEAN NOT NULL DEFAULT true,
+    ADD COLUMN IF NOT EXISTS last_indexed_at  TIMESTAMPTZ;
+
+-- The token must belong to the connection's own tenant: the composite key
+-- makes "tenant A's repo read with tenant B's token" unrepresentable.
+-- Deleting a token clears only the token column, never the tenant.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'repo_connections_token_fk') THEN
+    ALTER TABLE control.repo_connections
+      ADD CONSTRAINT repo_connections_token_fk
+      FOREIGN KEY (github_token_id, tenant_id)
+      REFERENCES control.github_tokens (id, tenant_id)
+      ON DELETE SET NULL (github_token_id);
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_repo_connections_external
+    ON control.repo_connections (lower(external_repo));
+
+CREATE TABLE IF NOT EXISTS control.index_jobs (
+    id           BIGSERIAL PRIMARY KEY,
+    tenant_id    BIGINT NOT NULL,
+    repo_name    TEXT NOT NULL,
+    trigger      TEXT NOT NULL CHECK (trigger IN ('schedule', 'push', 'manual')),
+    status       TEXT NOT NULL DEFAULT 'queued'
+                 CHECK (status IN ('queued', 'running', 'succeeded', 'failed')),
+    commit_sha   TEXT,
+    attempts     INTEGER NOT NULL DEFAULT 0,
+    error        TEXT,
+    stats        JSONB,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    started_at   TIMESTAMPTZ,
+    finished_at  TIMESTAMPTZ,
+    FOREIGN KEY (tenant_id, repo_name)
+        REFERENCES control.repo_connections (tenant_id, repo_name) ON DELETE CASCADE
+);
+
+-- At most one queued job per repo: a burst of pushes collapses into one run.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_index_jobs_one_queued
+    ON control.index_jobs (tenant_id, repo_name) WHERE status = 'queued';
+CREATE INDEX IF NOT EXISTS idx_index_jobs_recent
+    ON control.index_jobs (tenant_id, created_at DESC);
 """
 
 
@@ -119,10 +217,106 @@ def _revoke_client_roles(con: psycopg.Connection, schema: str) -> None:
     )
 
 
+def _provision_function() -> str:
+    """`control.provision_tenant(slug, display_name)`, for the app's restricted role.
+
+    Approving a sign-up has to create a schema, which the app's role may not do.
+    This SECURITY DEFINER function does exactly that and nothing more: validate
+    the slug, upsert the tenant row, create `tenant_<slug>` with the graph
+    tables, keep Supabase's API roles out, and let the caller read it. The
+    graph DDL is `db._SCHEMA` itself, embedded when the function is (re)created,
+    so it cannot drift from what the indexer writes.
+    """
+    return f"""
+CREATE OR REPLACE FUNCTION control.provision_tenant(p_slug text, p_display text)
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $fn$
+DECLARE
+  v_schema text := 'tenant_' || p_slug;
+  v_id     bigint;
+  r        text;
+BEGIN
+  IF p_slug IS NULL OR p_slug !~ '^[a-z0-9][a-z0-9_]{{0,39}}$' THEN
+    RAISE EXCEPTION 'invalid tenant slug %', p_slug;
+  END IF;
+  INSERT INTO control.tenants (slug, schema_name, display_name)
+  VALUES (p_slug, v_schema, p_display)
+  ON CONFLICT (slug) DO UPDATE SET display_name = EXCLUDED.display_name
+  RETURNING id INTO v_id;
+
+  EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I', v_schema);
+  -- Local to this function call: the SET clause above restores it on exit.
+  PERFORM set_config('search_path', quote_ident(v_schema), true);
+  EXECUTE $graph_ddl${db._SCHEMA}$graph_ddl$;
+  PERFORM set_config('search_path', 'pg_catalog, pg_temp', true);
+
+  FOREACH r IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
+      EXECUTE format('REVOKE ALL ON SCHEMA %I FROM %I', v_schema, r);
+      EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA %I FROM %I', v_schema, r);
+    END IF;
+  END LOOP;
+  IF session_user <> current_user THEN
+    EXECUTE format('GRANT USAGE ON SCHEMA %I TO %I', v_schema, session_user);
+    EXECUTE format('GRANT SELECT ON ALL TABLES IN SCHEMA %I TO %I', v_schema, session_user);
+  END IF;
+  RETURN v_id;
+END
+$fn$;
+
+REVOKE ALL ON FUNCTION control.provision_tenant(text, text) FROM PUBLIC;
+"""
+
+
 def ensure_control(con: psycopg.Connection) -> None:
     """Create the control schema if it is missing. Runs in the caller's transaction."""
     con.execute(CONTROL_SCHEMA)
+    con.execute(_provision_function())
     _revoke_client_roles(con, "control")
+
+
+# The tables the app writes on a user's behalf. Everything else in `control`
+# it may only read (plus mcp_tokens.last_used_at).
+APP_WRITABLE = ("users", "members", "github_tokens", "repo_connections", "index_jobs")
+
+
+def grant_app_role(con: psycopg.Connection, role: str) -> None:
+    """Give the app's login role exactly what the web app needs, and no more.
+
+    Read the control plane; write users, memberships, GitHub tokens, repo
+    connections and index jobs; provision tenants through the one function
+    that may create schemas. It never gets DDL rights or another tenant's
+    graph beyond SELECT on what it is granted per schema.
+    """
+    ident = sql.Identifier(role)
+    con.execute(sql.SQL("GRANT USAGE ON SCHEMA control TO {}").format(ident))
+    con.execute(sql.SQL("GRANT SELECT ON ALL TABLES IN SCHEMA control TO {}").format(ident))
+    con.execute(
+        sql.SQL("GRANT UPDATE (last_used_at) ON control.mcp_tokens TO {}").format(ident)
+    )
+    for table in APP_WRITABLE:
+        con.execute(
+            sql.SQL("GRANT INSERT, UPDATE, DELETE ON {} TO {}").format(
+                sql.Identifier("control", table), ident
+            )
+        )
+    con.execute(
+        sql.SQL("GRANT USAGE ON ALL SEQUENCES IN SCHEMA control TO {}").format(ident)
+    )
+    con.execute(
+        sql.SQL("GRANT EXECUTE ON FUNCTION control.provision_tenant(text, text) TO {}").format(
+            ident
+        )
+    )
+    for row in con.execute("SELECT schema_name FROM control.tenants").fetchall():
+        schema = sql.Identifier(row["schema_name"])
+        con.execute(sql.SQL("GRANT USAGE ON SCHEMA {} TO {}").format(schema, ident))
+        con.execute(
+            sql.SQL("GRANT SELECT ON ALL TABLES IN SCHEMA {} TO {}").format(schema, ident)
+        )
 
 
 def upsert_tenant(

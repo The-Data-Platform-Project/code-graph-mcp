@@ -21,3 +21,6 @@ scripts
 # The visualizer's page ships in the image; a locally exported snapshot does
 # not — in container mode the page reads /api/graph, never this file.
 visualizer/graph-data.json
+# The Next.js app builds from its own context (frontend/); the Python images
+# (this Dockerfile and infra/aws/Dockerfile) never need it.
+frontend

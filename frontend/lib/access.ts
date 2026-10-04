@@ -3,15 +3,20 @@ import { notFound, redirect } from "next/navigation";
 import { getViewer, type Viewer } from "./viewer";
 
 /**
- * Who may read administrative pages.
+ * Who may read administrative pages and approve sign-ups.
  *
- * Today there is one account, the owner, so administration is the owner role.
- * When sign-in with Google/GitHub lands, platform-admin rights become their
- * own flag (control.users.is_platform_admin in docs/FUTURE_STATE.md); this is
- * the one function that changes, and every admin page already calls it.
+ * Platform administration is its own flag (control.users.is_platform_admin),
+ * separate from tenant roles: every approved user owns their own tenant, and
+ * that must not make them an administrator of the platform. The owner password
+ * login is a platform admin.
  */
 export function canAdminister(viewer: Viewer): boolean {
-  return viewer.role === "owner";
+  return viewer.isPlatformAdmin;
+}
+
+/** Who may change a tenant's GitHub tokens and repo connections. */
+export function canManageTenant(viewer: Viewer): boolean {
+  return viewer.role === "owner" || viewer.role === "admin";
 }
 
 /**

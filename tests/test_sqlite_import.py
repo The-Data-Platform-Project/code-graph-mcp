@@ -8,38 +8,13 @@ between tests.
 from __future__ import annotations
 
 import sqlite3
-import uuid
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
 
 import psycopg
 import pytest
-from psycopg.rows import dict_row
 
 from code_graph import control, sqlite_import
 from code_graph.sqlite_import import GRAPH_TABLES, LoadError
-
-from conftest import TEST_DATABASE_URL
-
-
-@pytest.fixture
-def fresh_db():
-    """A brand-new database, dropped afterwards. Yields a connection to it."""
-    name = f"load_{uuid.uuid4().hex[:10]}"
-    try:
-        admin = psycopg.connect(TEST_DATABASE_URL, autocommit=True)
-    except psycopg.OperationalError as exc:  # pragma: no cover - env problem
-        pytest.skip(f"no Postgres at TEST_DATABASE_URL: {exc}")
-    admin.execute(f'CREATE DATABASE "{name}"')
-    parts = urlsplit(TEST_DATABASE_URL)
-    dsn = urlunsplit(parts._replace(path=f"/{name}"))
-    con = psycopg.connect(dsn, row_factory=dict_row)
-    try:
-        yield con
-    finally:
-        con.close()
-        admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
-        admin.close()
 
 
 @pytest.fixture
@@ -103,7 +78,10 @@ def test_load_creates_the_control_plane(fresh_db, sqlite_graph):
             "SELECT table_name FROM information_schema.tables WHERE table_schema = 'control'"
         ).fetchall()
     }
-    assert tables == {"tenants", "mcp_tokens", "repo_connections"}
+    assert tables == {
+        "tenants", "mcp_tokens", "repo_connections",
+        "users", "members", "github_tokens", "index_jobs",
+    }
 
 
 def test_graph_stays_out_of_public(fresh_db, sqlite_graph):

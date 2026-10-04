@@ -74,9 +74,9 @@ References resolve **across** languages: an HTML page links to the scripts and s
 
 ### Where repositories come from
 
-Indexing runs in the **self-hosted** stack. The MCP server reads repositories from the directory mounted at `/workspaces` (`REPOS_HOST_PATH` in `.env`), read-only. Any repository under that directory can be indexed; cloning a new one there makes it indexable immediately, with no restart.
+Self-hosted, the MCP server reads repositories from the directory mounted at `/workspaces` (`REPOS_HOST_PATH` in `.env`), read-only. Any repository under that directory can be indexed; cloning a new one there makes it indexable immediately, with no restart.
 
-Connecting repositories from GitHub and indexing in the cloud are [planned](/roadmap). The hosted deployment does not index.
+Hosted, repositories come from GitHub instead: see [connecting GitHub repositories](#connecting-github-repositories-hosted) below.
 
 ### Index
 
@@ -124,6 +124,34 @@ Then spot-check with a query you know the answer to, such as `search_symbol("mai
 ### Indexing is light
 
 The indexer holds one parse tree in memory at a time and commits in batches. In the project's own measurements it peaked at 122 MiB indexing a 700+ file, 75k-edge repository, against the container's hard 500 MiB limit.
+
+## Connecting GitHub repositories (hosted)
+
+On a hosted deployment with the cloud indexer, you add repositories yourself, on **Settings** (`/settings`, linked from the explorer's sidebar).
+
+### Sign in
+
+Choose **Continue with GitHub**. GitHub asks only to share who you are (`read:user`, `user:email`); signing in grants no access to any repository. The first time, your account waits for the administrator to approve it. Approval gives you your own graph, separate from everyone else's.
+
+### Add a token
+
+Repository access comes from **fine-grained personal access tokens**, which GitHub limits to the repositories you pick. Keep as many as you like: one for your own repositories and one per organization, say.
+
+1. Under **GitHub tokens**, fill in a label, the repository owner (you or an organization) and an expiry, then **Create on GitHub**. GitHub's token form opens with the name, owner, expiry and permissions filled in: read-only *Contents* and *Metadata*, plus *Webhooks* (read and write) if you left that box ticked.
+2. On GitHub, under **Repository access**, choose **Only select repositories** and pick them. Generate the token and copy it.
+3. Paste it into **Paste it here** and save.
+
+The app checks the token with GitHub before keeping it: it must be fine-grained (`github_pat_…`), valid, and yours. It is stored encrypted and is only ever used on the server. **Check** re-validates a token; **Remove** forgets it (revoke it on GitHub too).
+
+### Connect a repository
+
+Under **Repositories**, choose a token, pick one of the repositories GitHub granted it, optionally rename it or pin a branch, and **Connect**. The first index run starts straight away. After that, a repository is re-indexed:
+
+- **daily**, if *daily* is ticked;
+- **on every push** to its branch, if *on push* is ticked and a webhook is in place: **Webhook** adds it with the token (needs the *Webhooks* permission), or shows the URL and secret to add it by hand. A GitHub Actions workflow can send the same request instead (`.github/workflows/index-on-push.yml` in this project is a template);
+- **now**, with **Index now**.
+
+Each run indexes the branch's latest commit, re-parsing only changed files, and is listed under **Recent index runs** with its result or error. A daily run with no new commits is skipped. Source previews then read that exact commit, so their line numbers match the graph.
 
 ## Exploring the graph
 

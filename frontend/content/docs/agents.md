@@ -152,7 +152,7 @@ The code is read from the source when you ask for it, never from the database.
 
 - **Start with the graph.** Tell your agent, for example in the project's `CLAUDE.md`, to use the `code-graph` tools for "where is", "what calls" and "what depends on" questions before searching files.
 - **Scope with `repo`** whenever more than one repository is indexed. The same qualified name can exist in several.
-- **Re-index after changes** when self-hosted (`reindex_repository`). Answers reflect the last index, not your working tree.
+- **Re-index after changes** when self-hosted (`reindex_repository`). Hosted graphs with the cloud indexer refresh daily and on every push. Either way, answers reflect the last index, not your working tree.
 - **Unresolved is not an error.** It means the call leaves the repository, or its target is ambiguous.
 
 ## Access and tokens

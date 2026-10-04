@@ -1,0 +1,48 @@
+# Re-index this repository in the cloud graph on every push to its default
+# branch, from GitHub Actions instead of a repository webhook (use either; a
+# second request while one is queued is simply dropped).
+#
+# It sends the indexer exactly what a GitHub push webhook would, signed with
+# this connection's own webhook secret, so the indexer needs nothing new.
+# Copy this file into any repository you connect to do the same there.
+#
+# Setup: on /settings, press "Webhook" on the repository's connection, or read
+# the secret from GET /api/settings/connections/<name>/webhook, then add
+#   variable  INDEXER_URL                 the indexer's Function URL
+#   secret    CODE_GRAPH_WEBHOOK_SECRET   that connection's secret
+# Without them this workflow does nothing.
+name: Index on push
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  request-index:
+    if: vars.INDEXER_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ask the indexer to re-index this commit's branch
+        env:
+          INDEXER_URL: ${{ vars.INDEXER_URL }}
+          SECRET: ${{ secrets.CODE_GRAPH_WEBHOOK_SECRET }}
+          REF: ${{ github.ref }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [ -z "$SECRET" ]; then
+            echo "CODE_GRAPH_WEBHOOK_SECRET is not set; nothing to do."
+            exit 0
+          fi
+          body=$(jq -cn --arg ref "$REF" --arg repo "$REPO" --arg def "$DEFAULT_BRANCH" \
+            '{ref: $ref, repository: {full_name: $repo, default_branch: $def}}')
+          sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$SECRET" -r | cut -d' ' -f1)
+          curl --fail-with-body --silent --show-error --max-time 20 \
+            -X POST "${INDEXER_URL%/}/github" \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Event: push" \
+            -H "X-Hub-Signature-256: sha256=$sig" \
+            --data "$body"

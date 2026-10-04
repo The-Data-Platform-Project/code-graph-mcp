@@ -109,6 +109,15 @@ services:
       # Used when MCP_BACKEND=proxy: the Python server on this network.
       - MCP_UPSTREAM_URL=${MCP_UPSTREAM_URL:-http://code-graph-mcp:8765/mcp}
       - MCP_UPSTREAM_TOKEN=${CODE_GRAPH_TOKEN}
+      # Optional: sign-in with GitHub, /settings, and the cloud indexer
+      # (.env.example explains each).
+      - GITHUB_OAUTH_CLIENT_ID=${GITHUB_OAUTH_CLIENT_ID:-}
+      - GITHUB_OAUTH_CLIENT_SECRET=${GITHUB_OAUTH_CLIENT_SECRET:-}
+      - OWNER_GITHUB_LOGIN=${OWNER_GITHUB_LOGIN:-}
+      - PUBLIC_APP_URL=${PUBLIC_APP_URL:-}
+      - GITHUB_TOKEN_KEY=${GITHUB_TOKEN_KEY:-}
+      - INDEXER_URL=${INDEXER_URL:-}
+      - INDEXER_SECRET=${INDEXER_SECRET:-}
     mem_limit: "512m"
 
   ngrok:

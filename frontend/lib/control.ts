@@ -75,24 +75,39 @@ export type RepoConnection = {
   provider: "github";
   externalRepo: string;
   gitRef: string | null;
+  /** The sealed fine-grained token that reads this repo (lib/secretbox.ts), if any. */
+  tokenCiphertext: string | null;
 };
 
 /**
  * Where a tenant's repository comes from. The browser only ever names a repo
- * *within its own tenant*; the GitHub repo is looked up here, so nobody can
- * point the app's GitHub token at a repository their tenant does not own.
+ * *within its own tenant*; the GitHub repo and the token that reads it are
+ * looked up here, so nobody can point a token at a repository their tenant
+ * does not own.
  */
 export async function repoConnection(
   tenantId: number,
   repoName: string,
 ): Promise<RepoConnection | null> {
-  const rows = await query<{ provider: "github"; external_repo: string; git_ref: string | null }>(
-    `SELECT provider, external_repo, git_ref
-       FROM control.repo_connections
-      WHERE tenant_id = $1 AND repo_name = $2`,
+  const rows = await query<{
+    provider: "github";
+    external_repo: string;
+    git_ref: string | null;
+    token_ciphertext: string | null;
+  }>(
+    `SELECT c.provider, c.external_repo, c.git_ref, k.token_ciphertext
+       FROM control.repo_connections c
+       LEFT JOIN control.github_tokens k
+              ON k.id = c.github_token_id AND k.tenant_id = c.tenant_id
+      WHERE c.tenant_id = $1 AND c.repo_name = $2`,
     [tenantId, repoName],
   );
   return rows[0]
-    ? { provider: rows[0].provider, externalRepo: rows[0].external_repo, gitRef: rows[0].git_ref }
+    ? {
+        provider: rows[0].provider,
+        externalRepo: rows[0].external_repo,
+        gitRef: rows[0].git_ref,
+        tokenCiphertext: rows[0].token_ciphertext,
+      }
     : null;
 }

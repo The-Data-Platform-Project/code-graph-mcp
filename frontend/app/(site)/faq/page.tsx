@@ -35,7 +35,7 @@ const SECTIONS: { title: string; items: QA[] }[] = [
       },
       {
         q: "Is there pricing or a hosted sign-up?",
-        a: <p>Not yet. You can self-host it today. Hosted accounts, with Google or GitHub sign-in, are <A href="/roadmap">planned</A>.</p>,
+        a: <p>There is no public pricing. A hosted deployment can take sign-ups with GitHub: the administrator approves each account, which then gets its own graph. You can also self-host it today.</p>,
       },
     ],
   },
@@ -52,11 +52,11 @@ const SECTIONS: { title: string; items: QA[] }[] = [
       },
       {
         q: "Can the hosted version index my GitHub repositories?",
-        a: <p>Not yet. Indexing runs in the self-hosted stack; the hosted deployment serves graphs indexed there. Connecting GitHub and indexing in the cloud are <A href="/roadmap">planned</A>.</p>,
+        a: <p>Yes, when the deployment runs the cloud indexer. On the settings page, add a fine-grained GitHub token limited to the repositories you choose, then connect them. They are indexed straight away, then daily and on every push.</p>,
       },
       {
         q: "Does it keep the graph up to date automatically?",
-        a: <p>No. Re-indexing is on demand with <code>reindex_repository</code>, which re-parses only files that changed. Re-indexing on push is planned.</p>,
+        a: <p>Hosted with the cloud indexer, yes: connected repositories are re-indexed daily and on every push. Self-hosted, re-indexing is on demand with <code>reindex_repository</code>, which re-parses only files that changed.</p>,
       },
       {
         q: "Which AI agents work with it?",

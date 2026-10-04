@@ -55,6 +55,54 @@ export function sessionSecret(): string {
   return value;
 }
 
+// ── Sign-in with GitHub ─────────────────────────────────────────────────────
+
+/**
+ * The GitHub OAuth app people sign up with, or null when it is not set up (the
+ * login page then offers only the owner password). Sign-in asks GitHub for
+ * identity only (`read:user user:email`); repository access comes from the
+ * fine-grained tokens people add on /settings.
+ */
+export function githubOAuth(): { clientId: string; clientSecret: string } | null {
+  const clientId = process.env.GITHUB_OAUTH_CLIENT_ID?.trim() ?? "";
+  const clientSecret = process.env.GITHUB_OAUTH_CLIENT_SECRET?.trim() ?? "";
+  return clientId && clientSecret ? { clientId, clientSecret } : null;
+}
+
+/**
+ * The owner's GitHub login. Signing in with it lands in the owner's existing
+ * tenant as a platform admin, with no approval step; everyone else waits for
+ * the owner to approve them.
+ */
+export function ownerGithubLogin(): string {
+  return process.env.OWNER_GITHUB_LOGIN?.trim().toLowerCase() ?? "";
+}
+
+/** The site's own origin, when the request's cannot be trusted (proxies). */
+export function publicAppUrl(): string {
+  return process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "") ?? "";
+}
+
+/** The AES-256-GCM key GitHub tokens are sealed with (lib/secretbox.ts). */
+export function githubTokenKeyHex(): string {
+  return required("GITHUB_TOKEN_KEY");
+}
+
+// ── The cloud indexer (infra/aws) ───────────────────────────────────────────
+
+/** The indexer's Function URL, or "" when no indexer is deployed. */
+export function indexerUrl(): string {
+  return process.env.INDEXER_URL?.trim().replace(/\/+$/, "") ?? "";
+}
+
+/**
+ * Shared with the indexer: signs "Index now" requests and derives each
+ * connection's GitHub webhook secret (lib/indexer.ts, etl/signing.py).
+ */
+export function indexerSecret(): string {
+  return process.env.INDEXER_SECRET?.trim() ?? "";
+}
+
 // ── Source text ─────────────────────────────────────────────────────────────
 
 export type SourceProvider = "github" | "mcp" | "none";

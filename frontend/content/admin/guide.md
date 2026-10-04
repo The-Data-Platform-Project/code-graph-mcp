@@ -57,11 +57,16 @@ The public [getting started guide](/docs/getting-started) is the full procedure.
 | `DATABASE_URL` | yes | `postgresql://codegraph_app.<project-ref>:<password>@<pooler-host>:6543/postgres` when hosted. URL-encode special characters in the password. |
 | `DATABASE_CA_CERT` | hosted | The full PEM of Supabase's CA. A literal `\n` is accepted in place of newlines. |
 | `PGPOOL_MAX` | hosted | `1` on Vercel: one connection per function instance. |
-| `OWNER_PASSWORD` | yes | The owner's sign-in password, 12 or more characters. |
+| `OWNER_PASSWORD` | yes, unless GitHub sign-in is set up | The owner's break-glass sign-in password, 12 or more characters. |
 | `SESSION_SECRET` | yes | Signs session cookies, 32 or more characters (`openssl rand -hex 32`). |
 | `OWNER_TENANT_SLUG` | no | The tenant the owner signs in to. Default `owner`. |
 | `SOURCE_PROVIDER` | no | `github` (default), `mcp` or `none`. |
-| `GITHUB_TOKEN` | hosted | A read-only, fine-grained token with Contents access to the connected repositories. |
+| `GITHUB_TOKEN` | hosted | A read-only, fine-grained token for repositories connected without a token of their own (the loader's). |
+| `GITHUB_TOKEN_KEY` | for `/settings` | 64 hex characters (`openssl rand -hex 32`). Encrypts stored GitHub tokens; the indexer needs the same value. |
+| `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` | for GitHub sign-in | The GitHub OAuth app. Unset: owner password only. |
+| `OWNER_GITHUB_LOGIN` | for GitHub sign-in | Your GitHub login: it opens the owner tenant as a platform admin, with no approval. |
+| `PUBLIC_APP_URL` | for GitHub sign-in | The site's origin, used for the OAuth callback URL. |
+| `INDEXER_URL` / `INDEXER_SECRET` | for cloud indexing | The indexer's Function URL and the secret shared with it (`docs/INDEXER_AWS.md`). |
 | `MCP_BACKEND` | no | `native` (default) or `proxy`. |
 | `MCP_UPSTREAM_URL` / `MCP_UPSTREAM_TOKEN` | proxy only | Where `/api/mcp` forwards, and the token it sends. |
 | `MCP_BASE_URL` / `CODE_GRAPH_TOKEN` | `SOURCE_PROVIDER=mcp` | The Python MCP server's base URL and token, for reading source. |
@@ -84,18 +89,13 @@ Claude Code reads `CODE_GRAPH_MCP_URL` and `CODE_GRAPH_TOKEN` from **its own** e
 ### Database configuration
 
 1. **Create the schema.** The loader creates `control` and the tenant schema itself (below). For the older single-tenant `public` layout, `./scripts/setup_db.sh --supabase`.
-2. **Create the app's read-only role** in the Supabase SQL Editor:
+2. **Create the app's restricted role** in the Supabase SQL Editor, `CREATE ROLE codegraph_app LOGIN PASSWORD '<a long random password>';`, then apply its grants (as `postgres`; idempotent, re-run after control-plane changes):
 
-   ```sql
-   CREATE ROLE codegraph_app LOGIN PASSWORD '<a long random password>';
-   GRANT USAGE ON SCHEMA control TO codegraph_app;
-   GRANT SELECT ON ALL TABLES IN SCHEMA control TO codegraph_app;
-   GRANT UPDATE (last_used_at) ON control.mcp_tokens TO codegraph_app;
-   GRANT USAGE ON SCHEMA tenant_owner TO codegraph_app;
-   GRANT SELECT ON ALL TABLES IN SCHEMA tenant_owner TO codegraph_app;
+   ```bash
+   ~/cgvenv/bin/python scripts/migrate_control.py --app-role codegraph_app
    ```
 
-   Repeat the last two lines for each new tenant schema. `--replace` loads keep the grants, because they truncate tables rather than drop them. To change the password later, run `ALTER ROLE codegraph_app WITH PASSWORD '<new password>';` and update `DATABASE_URL`.
+   The role reads `control` and every tenant graph, writes only `users`, `members`, `github_tokens`, `repo_connections` and `index_jobs`, and creates a tenant only through `control.provision_tenant` (SECURITY DEFINER), which approving a sign-up calls. It cannot run DDL or write a graph. `--replace` loads keep the grants, because they truncate tables rather than drop them. To change the password later, run `ALTER ROLE codegraph_app WITH PASSWORD '<new password>';` and update `DATABASE_URL`.
 3. **Trust the CA.** Download the certificate from Supabase (Project Settings → Database → SSL Configuration) into `DATABASE_CA_CERT`. Never work around verification.
 
 ### Production deployment procedure
@@ -176,11 +176,20 @@ Tenants are cached by the app for 60 seconds; connections are read on each reque
 
 ## Authentication and access
 
-### Owner authentication
+### Sign-in
 
-- One owner, one password (`OWNER_PASSWORD`). Changing it takes a redeploy.
+- **Continue with GitHub** (a GitHub OAuth app; callback `https://<app>/api/auth/github/callback`). GitHub is asked only for `read:user user:email`; the OAuth token is used once to read the profile and discarded.
+- A first sign-in creates a **pending** account. Approve it on `/settings` → **People**: approval provisions the person's own graph, `tenant_gh_<github id>`. **Suspend** ends their web access on their next request (the session is re-checked against `control.users` every time). MCP tokens belong to the tenant, not the person: revoke theirs with `scripts/mcp_token.py` too.
+- `OWNER_GITHUB_LOGIN` signs straight into the owner tenant as a platform admin. Platform admin (`control.users.is_platform_admin`) is separate from owning a tenant: every approved person owns their own graph, only admins see People and this guide.
+- The owner password (`OWNER_PASSWORD`) remains as a break-glass sign-in; unset it to switch it off.
 - Sessions are signed cookies (`cg_session`) valid for seven days. **Changing `SESSION_SECRET` signs everyone out.**
-- `frontend/lib/viewer.ts` (`getViewer()`) is the single point where a request becomes a viewer: user, role and tenant. The admin guide is served only when that viewer is the owner. When Google and GitHub sign-in arrive, this function changes and the routes behind it do not.
+- `frontend/lib/viewer.ts` (`getViewer()`) is the single point where a request becomes a viewer: user, role and tenant.
+
+### GitHub tokens and repositories
+
+- People add **fine-grained** tokens (`github_pat_…`) on `/settings`: the page opens GitHub's token form pre-filled with read-only Contents and Metadata (plus Webhooks, optionally); they pick the repositories on GitHub and paste the token back. The app checks it with GitHub and refuses classic tokens and tokens belonging to someone else.
+- Tokens are stored AES-256-GCM-encrypted under `GITHUB_TOKEN_KEY`, bound to their tenant, and used only server-side: for source previews of that tenant's connections, listing the repositories a token can see, registering push webhooks, and by the indexer.
+- A tenant keeps any number of tokens; each repo connection names the one that reads it.
 
 ### MCP tokens
 
@@ -264,12 +273,16 @@ Tenants are cached by the app for 60 seconds; connections are read on each reque
 
 After a production deployment: `wait_for_deploy.sh`, then `smoke_prod.sh`, then sign in and open a repository and a node to confirm previews work. `vercel_status.sh` shows what the project is set to if anything looks wrong.
 
+## Cloud indexing
+
+Connected repositories are indexed on AWS Lambda from GitHub: daily, on every push (webhook or the `index-on-push.yml` GitHub Actions workflow) and on demand (**Index now**). Each run is a row in `control.index_jobs`, shown on `/settings`. Setup, costs (inside the AWS free tier) and operations are in `docs/INDEXER_AWS.md`; the deploy is `.github/workflows/deploy-indexer.yml`.
+
 ## Future administration
 
 **Planned. None of this exists yet.** The design is in `docs/FUTURE_STATE.md` in the repository.
 
-- **Sign-in with Google and GitHub** via Supabase Auth. The owner links their own account, then the password login is switched off.
-- **An approval workflow.** New sign-ins wait in a `pending` state until the owner approves them. Approval provisions a tenant and its schema. Suspending a user stops their MCP access within the 60-second tenant cache.
+- **Sign-in with Google.**
+- **Self-service MCP tokens.** Today the administrator mints them with `scripts/mcp_token.py`, including for approved users' tenants (`--tenant gh_<github id>`).
 - **An admin portal** at `/admin`:
 
   | Page | Contents |
@@ -280,6 +293,4 @@ After a production deployment: `wait_for_deploy.sh`, then `smoke_prod.sh`, then 
   | Jobs | Index jobs with status and error; retry or cancel |
   | Audit | Every administrative action |
 
-- **A GitHub App** through which users choose the repositories ContextForge may read, enforced by GitHub itself.
-- **Cloud indexing:** an index job queue and the existing Python indexer as a worker on a container host, recording the indexed commit so previews stay exact. Re-indexing on push via webhook comes after.
 - **Hardening before opening sign-ups:** per-tenant database roles, token expiry, per-token rate limits and per-user quotas.

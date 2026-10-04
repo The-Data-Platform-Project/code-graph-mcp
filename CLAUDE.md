@@ -74,9 +74,21 @@ built vs designed) and docs/ADMIN_GUIDE.md (deploy/operate).
   owns which (`src/code_graph/control.py`). TS schema-qualifies every table via
   `lib/tenancy.ts` `tbl()`; Python points `search_path` at it (`GRAPH_SCHEMA`).
   A schema name only ever comes from a token or session — never a request field.
-- `lib/viewer.ts` `getViewer()` is the single auth seam (owner-password cookie
-  now, Supabase Auth later). `lib/graph.ts` ports `queries.py`; `lib/source.ts`
-  reads source via `SOURCE_PROVIDER=github|mcp|none`.
+- `lib/viewer.ts` `getViewer()` is the single auth seam: the owner-password
+  cookie (`sub "owner"`) or a GitHub sign-in (`sub "user:<id>"`, re-checked
+  against `control.users`/`members` every request). Sign-in is a GitHub OAuth
+  app (`app/api/auth/github/*`, identity scopes only); new people are
+  `pending` until a platform admin approves them on `/settings`, which calls
+  `control.provision_tenant` (SECURITY DEFINER; the app role has no DDL).
+  `canAdminister` = `isPlatformAdmin`, not tenant role. `lib/graph.ts` ports
+  `queries.py`; `lib/source.ts` reads source via `SOURCE_PROVIDER=github|mcp|none`,
+  with each connection's own GitHub token.
+- `/settings` (`components/Settings.tsx`, `app/api/settings/**`,
+  `lib/accounts.ts`): a tenant's fine-grained GitHub tokens (requested via
+  GitHub's pre-filled token URL, validated, AES-256-GCM-sealed by
+  `lib/secretbox.ts` ⇄ `secretbox.py`, AAD = tenant id), repo connections
+  (token, branch, daily/on-push), index runs, and People (admins). Tenant id
+  always comes from the Viewer, never the request.
 - `/api/mcp`: bearer token → sha256 → tenant. `MCP_BACKEND=native` serves
   `lib/mcpServer.ts` (a twin of the Python read tools — same names, args and
   result shapes; keep them in step, `scripts/mcp_parity.py` checks);
@@ -115,6 +127,18 @@ built vs designed) and docs/ADMIN_GUIDE.md (deploy/operate).
 - `extractors/` — `python.py`, `javascript.py` (JS+TS), `html.py`, `jinja.py`, `css.py`, `json.py`, `yaml.py`, `generic.py`. Each returns a `FileResult(nodes, edges, imports)` and must not retain the tree. `javascript.py` treats **anonymous function scopes (IIFEs, callbacks) as transparent** — nested named defs attribute to the nearest named container — so IIFE-wrapped modules still yield nodes. `jinja.py` is a regex pass (no grammar) invoked by `html.py`: `{% macro %}` → `Function` node, `{% extends/include/import/from %}` → template `IMPORTS`, macro uses → `CALLS` (restricted to known bindings).
 - `resolver.py` — resolves `CALLS/INHERITS/IMPLEMENTS/USES_TYPE` raw strings to real nodes via a cascade: import-map → self/cls/this → same-module → unique-in-repo → honestly unresolved. Also resolves root-relative asset/template `IMPORTS` (`/static/app.js`, Jinja `{% extends "base.html" %}`) by a unique trailing-path (suffix) match, updating both the `imports` row and the edge. Runs after the whole repo is indexed.
 - `db.py` — Postgres schema + `connect(dsn)`. DDL runs once per process per DSN.
+- `control.py` — the `control` schema DDL (idempotent; `scripts/migrate_control.py`
+  applies it and the app role's grants), tenants, MCP tokens, `provision_tenant`.
+- `secretbox.py` — AES-256-GCM for stored GitHub tokens; byte-compatible with
+  `frontend/lib/secretbox.ts` (a test opens a Node-sealed value).
+- `etl/` — the cloud indexer (docs/INDEXER_AWS.md): `signing` (per-connection
+  webhook secrets derived from `INDEXER_SECRET`; signed app requests), `jobs`
+  (`control.index_jobs`, one queued per repo, conditional claim), `github`
+  (commit tarball streamed to disk, regular files only), `worker` (index into
+  `tenant_<slug>` via search_path, incremental, skip unchanged commit, pin
+  `git_ref`), `triggers`, `aws_lambda` (Function URL + schedule; SQS worker).
+  Infra: `infra/aws/template.yaml` (SAM) and `bootstrap.yaml` (OIDC deploy
+  role, ECR, artifacts); CI/CD: `.github/workflows/`.
 - `queries.py` — read-side queries backing the tools, plus the preview side:
   `get_repo_readme`, `get_file_source`, `get_dependents`, `get_file_symbols` and
   `get_node_context` (one call returning a node, its source and everything it is

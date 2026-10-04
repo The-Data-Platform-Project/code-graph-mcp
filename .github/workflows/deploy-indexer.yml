@@ -1,0 +1,109 @@
+# Deploy the cloud indexer (infra/aws/template.yaml) to AWS when its code
+# changes on main, after CI passes. AWS access is a short-lived OIDC session
+# for the role infra/aws/bootstrap.yaml created; no AWS keys live in GitHub.
+#
+# Repository variables (Settings → Secrets and variables → Actions → Variables):
+#   AWS_DEPLOY_ROLE_ARN, AWS_IMAGE_REPOSITORY, AWS_ARTIFACTS_BUCKET  bootstrap outputs
+#   AWS_REGION            default ap-southeast-1 (next to Supabase and Vercel sin1)
+#   INDEXER_STACK         default code-graph-indexer
+#   INDEXER_ALARM_EMAIL   optional: email when a job dies twice
+#   APP_DB_ROLE           optional: the web app's database role, for the grants below
+# Repository secret (optional):
+#   MIGRATE_DATABASE_URL  database-owner URL (Supabase session pooler); when set,
+#                         the control schema is migrated before each deploy
+name: Deploy indexer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - src/code_graph/**
+      - infra/aws/**
+      - requirements.lock.txt
+      - scripts/migrate_control.py
+      - .github/workflows/deploy-indexer.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-indexer
+  cancel-in-progress: false
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: test
+    if: vars.AWS_DEPLOY_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
+      STACK: ${{ vars.INDEXER_STACK || 'code-graph-indexer' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Migrate the control schema
+        env:
+          DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
+          APP_DB_ROLE: ${{ vars.APP_DB_ROLE }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "MIGRATE_DATABASE_URL is not set; skipping (the indexer creates its tables on start)."
+            exit 0
+          fi
+          pip install --quiet "psycopg[binary]==3.3.6"
+          python scripts/migrate_control.py ${APP_DB_ROLE:+--app-role "$APP_DB_ROLE"}
+
+      - uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build
+        run: sam build --template-file infra/aws/template.yaml
+
+      - name: Deploy
+        env:
+          ALARM_EMAIL: ${{ vars.INDEXER_ALARM_EMAIL }}
+        run: |
+          overrides="SsmPrefix=/code-graph"
+          if [ -n "$ALARM_EMAIL" ]; then overrides="$overrides AlarmEmail=$ALARM_EMAIL"; fi
+          sam deploy \
+            --stack-name "$STACK" \
+            --region "$AWS_REGION" \
+            --image-repository "${{ vars.AWS_IMAGE_REPOSITORY }}" \
+            --s3-bucket "${{ vars.AWS_ARTIFACTS_BUCKET }}" \
+            --s3-prefix "$STACK" \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides $overrides
+
+      - name: Outputs
+        run: |
+          {
+            echo "### Indexer deployed"
+            echo
+            echo '| Output | Value |'
+            echo '|---|---|'
+            aws cloudformation describe-stacks --stack-name "$STACK" \
+              --query 'Stacks[0].Outputs[].[OutputKey,OutputValue]' --output text |
+              while read -r k v; do echo "| $k | \`$v\` |"; done
+            echo
+            echo "Set \`INDEXER_URL\` on the web app to the IndexerUrl above."
+          } >> "$GITHUB_STEP_SUMMARY"

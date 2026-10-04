@@ -4,9 +4,9 @@
  * Web Crypto only — no Node APIs — because middleware runs on the Edge runtime
  * and must verify the same cookie the Node route handlers issue.
  *
- * This is the owner-login session, standing in for real sign-in. When Supabase
- * Auth (Google/GitHub) lands, it replaces the issuer; the payload shape — who
- * the viewer is, which tenant, which role — is what the rest of the app reads.
+ * Issued by the owner password login and by sign-in with GitHub
+ * (app/api/auth/github/callback). The payload says who signed in and which
+ * tenant; lib/viewer.ts re-checks a GitHub user's status on every request.
  */
 
 export const SESSION_COOKIE = "cg_session";
@@ -15,7 +15,7 @@ export const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 export type Role = "owner" | "admin" | "member";
 
 export type SessionPayload = {
-  sub: string;          // who: "owner" today, an auth user id later
+  sub: string;          // who: "owner" (password login) or "user:<control.users.id>"
   tenant: string;       // tenant slug
   role: Role;
   exp: number;          // unix seconds

@@ -224,6 +224,7 @@ export default function Explorer({ canAdminister = false }: { canAdminister?: bo
 
         {/* Plain links: the guides are part of the site, with its own stylesheet. */}
         <nav className="sidebar-links" aria-label="Guides">
+          <a href="/settings">Settings</a>
           <a href="/docs/user-guide">User guide</a>
           {canAdminister && <a href="/admin/guide">Admin guide</a>}
           <a href="/">Home</a>
