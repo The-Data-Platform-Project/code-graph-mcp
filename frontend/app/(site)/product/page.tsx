@@ -57,15 +57,15 @@ export default function ProductPage() {
             <span className="badge badge-available" style={{ justifySelf: "start" }}>Available</span>
             <h2 className="h2">An indexer that understands structure</h2>
             <p className="muted" style={{ margin: 0 }}>
-              ContextForge parses each file with tree-sitter, extracts symbols and relationships,
-              and resolves references across files and languages: an HTML page to the scripts it
-              loads, a template to the one it extends, a service to the services it depends on.
-              Resolution follows imports, then the enclosing class, then the same file, then a
-              unique name — and anything still ambiguous is marked <em>unresolved</em> rather than
-              guessed.
+              ContextForge parses each file with tree-sitter, pulls out the symbols and
+              relationships, and resolves references across files and even across languages. So
+              an HTML page links to the scripts it loads, a template to the one it extends, and a
+              service to the services it depends on. Resolution goes through the imports first,
+              then the enclosing class, then the same file, then a unique name, and anything still
+              ambiguous is marked <em>unresolved</em> instead of guessed.
             </p>
             <p className="muted" style={{ margin: 0 }}>
-              Re-indexing is incremental: only files whose content changed are parsed again.
+              Re-indexing is incremental, so only the files whose content changed get parsed again.
             </p>
           </div>
           <div className="prose">
@@ -120,9 +120,10 @@ export default function ProductPage() {
             <span className="badge badge-available" style={{ justifySelf: "start" }}>Available</span>
             <h2 className="h2">An MCP endpoint for agents</h2>
             <p className="muted" style={{ margin: 0 }}>
-              Coding agents query the graph over MCP (streamable HTTP, bearer token). Each
-              question is one call with a short, structured answer — instead of a search followed
-              by reading whole files. The hosted and self-hosted endpoints answer identically.
+              Coding agents query the graph over MCP (streamable HTTP with a bearer token). Each
+              question is one call with a short, structured answer, instead of a search followed
+              by reading whole files. The hosted and self-hosted endpoints answer exactly the same
+              way.
             </p>
             <Link className="link-arrow" href="/docs/api">MCP tool reference</Link>
           </div>
@@ -163,7 +164,8 @@ export default function ProductPage() {
           <div className="cta-band">
             <h2 className="h2">Run it on your own code.</h2>
             <p className="lede" style={{ textAlign: "center" }}>
-              Open source under Apache-2.0. Docker Compose, one repository, about fifteen minutes.
+              It&apos;s open source under Apache-2.0, and with Docker Compose you can have your first
+              repository indexed in about fifteen minutes.
             </p>
             <div className="hero-ctas" style={{ justifyContent: "center" }}>
               <Link className="btn btn-primary" href="/docs/getting-started">Get started</Link>

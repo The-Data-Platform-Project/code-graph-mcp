@@ -47,17 +47,17 @@ export default function DocsIndex() {
       <div className="prose">
         <p>
           ContextForge parses repositories into a graph of files, classes, functions, methods
-          and the relationships between them (imports, calls, inheritance), stores that
-          structure in Postgres, and serves it two ways: a visual <strong>graph explorer</strong>{" "}
-          and an <strong>MCP endpoint</strong> that coding agents query instead of grepping and
-          reading files. It stores structure only, never your source code.
+          and the relationships between them (imports, calls, inheritance) and stores that
+          structure in Postgres. You can get at it two ways: the graph explorer in your browser,
+          or the MCP endpoint, which coding agents query instead of grepping and reading files.
+          It stores structure only, never your source code.
         </p>
         <blockquote>
           <p>
-            <strong>Where things stand.</strong> Indexing runs in the self-hosted Docker stack.
-            The hosted deployment serves graphs that were indexed locally. Signing in with
-            Google or GitHub, connecting repositories from GitHub and indexing in the cloud are{" "}
-            <Link href="/roadmap">planned</Link>, not available.
+            Right now indexing runs in the self-hosted Docker stack, and the hosted deployment
+            serves graphs that were indexed locally. Signing in with Google or GitHub, connecting
+            repositories from GitHub and indexing in the cloud are{" "}
+            <Link href="/roadmap">planned</Link>, but not built yet.
           </p>
         </blockquote>
       </div>

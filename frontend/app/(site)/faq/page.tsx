@@ -23,7 +23,7 @@ const SECTIONS: { title: string; items: QA[] }[] = [
       },
       {
         q: "Is it an AI chatbot for my code?",
-        a: <p>No. ContextForge has no model and no chat. It answers structured queries — who calls this, what does this import — and your agent does the reasoning with the answers.</p>,
+        a: <p>No. ContextForge has no model and no chat. It answers structured questions like who calls this or what this file imports, and your agent does the reasoning with those answers.</p>,
       },
       {
         q: "How is it different from searching the code?",
@@ -48,7 +48,7 @@ const SECTIONS: { title: string; items: QA[] }[] = [
       },
       {
         q: "How do I index a repository?",
-        a: <p>Run the self-hosted stack, then call <code>index_repository(name, path)</code> over MCP — from Claude Code, for example. <A href="/docs/getting-started">Getting started</A> walks through it.</p>,
+        a: <p>Run the self-hosted stack, then call <code>index_repository(name, path)</code> over MCP, from Claude Code for example. <A href="/docs/getting-started">Getting started</A> walks you through it.</p>,
       },
       {
         q: "Can the hosted version index my GitHub repositories?",
@@ -68,7 +68,7 @@ const SECTIONS: { title: string; items: QA[] }[] = [
       },
       {
         q: "What does “unresolved” mean?",
-        a: <p>A call the graph could not tie to a node — usually a library call, or a name that is ambiguous. ContextForge marks it rather than guessing.</p>,
+        a: <p>It&apos;s a call the graph couldn&apos;t tie to a node, usually a library call or a name that&apos;s ambiguous. ContextForge marks it instead of guessing.</p>,
       },
     ],
   },
@@ -77,7 +77,7 @@ const SECTIONS: { title: string; items: QA[] }[] = [
     items: [
       {
         q: "Does ContextForge store my source code?",
-        a: <p>No. It stores names, locations and relationships. Source is read when you open it or an agent asks for a snippet — from your disk when self-hosted, from GitHub when hosted — and is never written to the database.</p>,
+        a: <p>No. It stores names, locations and relationships. Source is read when you open it or an agent asks for a snippet (from your disk when self-hosted, from GitHub when hosted), and it&apos;s never written to the database.</p>,
       },
       {
         q: "Does the indexer run my code?",

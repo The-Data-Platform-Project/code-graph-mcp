@@ -1,1 +1,1 @@
-ContextForge — Build context your agents can use.
+ContextForge: Build context your agents can use.
