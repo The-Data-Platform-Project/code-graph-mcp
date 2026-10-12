@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { evaluatePassword } from "../lib/password-policy.ts";
+import { DEFAULT_TARGET, safeTarget } from "../lib/redirect.ts";
 import { base32Decode, base32Encode, hotp, matchTotp, otpauthUri } from "../lib/totp.ts";
 
 // RFC 6238 Appendix B, SHA-1 key "12345678901234567890"; we use 6 digits, so
@@ -73,4 +74,15 @@ test("a long, unpredictable password passes", () => {
   const v = evaluatePassword("Tr0ub4dor&3-Gl4cier!River", common);
   assert.equal(v.ok, true, v.problems.join(" "));
   assert.ok(v.score >= 3);
+});
+
+test("safeTarget keeps same-origin paths and refuses everything else", () => {
+  assert.equal(safeTarget("/settings?x=1#security"), "/settings?x=1#security");
+  assert.equal(safeTarget("/login/verify?next=%2Fgraph"), "/login/verify?next=%2Fgraph");
+  for (const bad of [
+    "//evil.example", "/\\evil.example", "/\t/evil.example", "/\n/evil.example", "/ /evil.example",
+    "https://evil.example", "javascript:alert(1)", "", null, undefined, "/\u0000x",
+  ]) {
+    assert.equal(safeTarget(bad), DEFAULT_TARGET, JSON.stringify(bad));
+  }
 });

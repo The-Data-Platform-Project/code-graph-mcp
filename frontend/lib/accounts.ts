@@ -76,6 +76,17 @@ export async function recordSignIn(
   });
 }
 
+/** GitHub ids of the platform admins who already own the given tenant. */
+export async function tenantAdminGithubIds(tenantId: number): Promise<number[]> {
+  const rows = await query<{ github_id: string }>(
+    `SELECT u.github_id FROM control.users u
+       JOIN control.members m ON m.user_id = u.id
+      WHERE m.tenant_id = $1 AND m.role = 'owner' AND u.is_platform_admin`,
+    [tenantId],
+  );
+  return rows.map((r) => Number(r.github_id));
+}
+
 export type Membership = { tenantId: number; slug: string; role: "owner" | "admin" | "member" };
 
 /** The tenant a user signs in to: their own, if they have several. */

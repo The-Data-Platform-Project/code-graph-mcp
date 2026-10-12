@@ -17,7 +17,7 @@
  */
 import { openGithubToken } from "./accounts";
 import { repoConnection, type RepoConnection } from "./control";
-import { githubToken, sourceProvider } from "./env";
+import { githubToken, ownerTenantSlug, sourceProvider } from "./env";
 import { mcpGet } from "./mcp";
 import type { Tenant } from "./tenancy";
 
@@ -72,10 +72,16 @@ function safeRelPath(path: string): string | null {
 
 // ── GitHub ──────────────────────────────────────────────────────────────────
 
-/** The connection's own token if it has one, else the deployment's GITHUB_TOKEN. */
+/**
+ * The connection's own token if it has one. The deployment's GITHUB_TOKEN is a
+ * fallback for the owner tenant only (the connections the loader created):
+ * any approved user can create a connection naming any repository, so lending
+ * them the deployment's token would let them read whatever it can see. Other
+ * tenants' token-less connections read public repositories only.
+ */
 function tokenFor(tenant: Tenant, conn: RepoConnection): string {
   if (conn.tokenCiphertext) return openGithubToken(tenant.id, conn.tokenCiphertext);
-  return githubToken();
+  return tenant.slug === ownerTenantSlug() ? githubToken() : "";
 }
 
 async function githubFetch(url: string, accept: string, token: string): Promise<Response> {

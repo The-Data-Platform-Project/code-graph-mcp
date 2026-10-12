@@ -1,10 +1,11 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextRequest } from "next/server";
-import { primaryMembership, recordSignIn, type GithubProfile } from "@/lib/accounts";
+import { primaryMembership, recordSignIn, tenantAdminGithubIds, type GithubProfile } from "@/lib/accounts";
 import { logAuthEvent } from "@/lib/authlog";
 import { OAUTH_PER_IP } from "@/lib/authpolicy";
 import { tenantBySlug } from "@/lib/control";
-import { githubOAuth, ownerGithubLogin, ownerTenantSlug, publicAppUrl } from "@/lib/env";
+import { githubOAuth, ownerGithubId, ownerGithubLogin, ownerTenantSlug, publicAppUrl } from "@/lib/env";
+import type { Tenant } from "@/lib/tenancy";
 import { ghFetch } from "@/lib/github";
 import { mfaEnabled } from "@/lib/mfa";
 import { consume } from "@/lib/ratelimit";
@@ -40,6 +41,27 @@ async function profileFrom(accessToken: string): Promise<GithubProfile | null> {
     }
   }
   return { id: u.id, login: u.login, name: u.name, email, avatarUrl: u.avatar_url };
+}
+
+/**
+ * The owner tenant, if this GitHub account is the owner. OWNER_GITHUB_ID (the
+ * immutable numeric id) decides when set. With only OWNER_GITHUB_LOGIN, the
+ * first account to sign in under that login is pinned: a later, different
+ * account holding the same login (renamed and re-registered) is not the owner.
+ */
+async function ownerTenantFor(profile: GithubProfile): Promise<Tenant | null> {
+  const id = ownerGithubId();
+  const login = ownerGithubLogin();
+  const matches = id !== null ? profile.id === id : !!login && profile.login.toLowerCase() === login;
+  if (!matches) return null;
+  const tenant = await tenantBySlug(ownerTenantSlug());
+  if (!tenant || id !== null) return tenant;
+  const pinned = await tenantAdminGithubIds(tenant.id);
+  if (pinned.length && !pinned.includes(profile.id)) {
+    console.error(`GitHub account ${profile.id} holds OWNER_GITHUB_LOGIN but is not the pinned owner; not granted.`);
+    return null;
+  }
+  return tenant;
 }
 
 /**
@@ -110,8 +132,7 @@ export async function GET(request: NextRequest) {
     return failed("github_exchange");
   }
 
-  const isOwner = !!ownerGithubLogin() && profile.login.toLowerCase() === ownerGithubLogin();
-  const ownerTenant = isOwner ? await tenantBySlug(ownerTenantSlug()) : null;
+  const ownerTenant = await ownerTenantFor(profile);
   const user = await recordSignIn(profile, ownerTenant ? { tenantId: ownerTenant.id } : null);
 
   const subject = `user:${user.id}`;

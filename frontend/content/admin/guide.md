@@ -64,10 +64,11 @@ The public [getting started guide](/docs/getting-started) is the full procedure.
 | `SESSION_SECRET` | yes | Signs session cookies, 32 or more characters (`openssl rand -hex 32`). |
 | `OWNER_TENANT_SLUG` | no | The tenant the owner signs in to. Default `owner`. |
 | `SOURCE_PROVIDER` | no | `github` (default), `mcp` or `none`. |
-| `GITHUB_TOKEN` | hosted | A read-only, fine-grained token for repositories connected without a token of their own (the loader's). |
+| `GITHUB_TOKEN` | hosted | A read-only, fine-grained token for the owner tenant's repositories connected without a token of their own (the loader's). Never lent to other tenants. |
 | `GITHUB_TOKEN_KEY` | for `/settings` | 64 hex characters (`openssl rand -hex 32`). Encrypts stored GitHub tokens; the indexer needs the same value. |
 | `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` | for GitHub sign-in | The GitHub OAuth app. Unset: owner password only. |
 | `OWNER_GITHUB_LOGIN` | for GitHub sign-in | Your GitHub login: it opens the owner tenant as a platform admin, with no approval. |
+| `OWNER_GITHUB_ID` | recommended | Your numeric GitHub id. When set, only that account is the owner (logins can be renamed and re-registered). Without it, the first account to sign in under the login is pinned. |
 | `PUBLIC_APP_URL` | for GitHub sign-in | The site's origin, used for the OAuth callback URL. |
 | `INDEXER_URL` / `INDEXER_SECRET` | for cloud indexing | The indexer's Function URL and the secret shared with it (`docs/INDEXER_AWS.md`). |
 | `MCP_BACKEND` | no | `native` (default) or `proxy`. |

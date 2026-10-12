@@ -163,7 +163,9 @@ For source previews of repos connected without a token of their own (such as
 the ones the loader created), create a **fine-grained GitHub token** with
 read-only *Contents* access to just those repos. That is `GITHUB_TOKEN`. Even
 for public repos, set one: unauthenticated GitHub allows 60 requests an hour.
-Repos connected on `/settings` use the token chosen there instead.
+Repos connected on `/settings` use the token chosen there instead. Only the
+owner tenant falls back to `GITHUB_TOKEN`; other tenants' connections without
+a token of their own read public repositories only.
 
 For sign-in with GitHub and the cloud indexer (§2.7, §2.8):
 
@@ -199,6 +201,7 @@ is wrong. In **Settings → Build and Deployment**, set **Root Directory =
 | `GITHUB_TOKEN_KEY` | from 2.4 (needed for `/settings`) |
 | `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` | from 2.7 |
 | `OWNER_GITHUB_LOGIN` | your GitHub login (2.7) |
+| `OWNER_GITHUB_ID` | your numeric GitHub id (2.7); takes precedence over the login |
 | `PUBLIC_APP_URL` | `https://<app>`, the origin GitHub redirects back to |
 | `INDEXER_URL` / `INDEXER_SECRET` | from 2.8 |
 
@@ -257,7 +260,8 @@ person gets their own graph (`tenant_gh_<github id>`).
    Homepage `https://<app>`, callback URL
    `https://<app>/api/auth/github/callback`. Generate a client secret.
 2. On Vercel set `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`,
-   `PUBLIC_APP_URL=https://<app>` and `OWNER_GITHUB_LOGIN=<your login>`, then
+   `PUBLIC_APP_URL=https://<app>`, `OWNER_GITHUB_LOGIN=<your login>` and
+   `OWNER_GITHUB_ID=<your numeric id>` (from `https://api.github.com/users/<login>`), then
    redeploy. The login page now offers **Continue with GitHub**.
 3. Sign in with GitHub yourself. Your login lands in the existing `owner`
    tenant as a platform admin, with no approval step.

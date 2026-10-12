@@ -95,6 +95,16 @@ export function ownerGithubLogin(): string {
   return process.env.OWNER_GITHUB_LOGIN?.trim().toLowerCase() ?? "";
 }
 
+/**
+ * The owner's numeric GitHub user id. Logins can be renamed and then claimed
+ * by someone else; ids never change. When set, it alone decides who is the
+ * owner. Find yours at https://api.github.com/users/<login> ("id").
+ */
+export function ownerGithubId(): number | null {
+  const raw = process.env.OWNER_GITHUB_ID?.trim() ?? "";
+  return /^\d{1,18}$/.test(raw) ? Number(raw) : null;
+}
+
 /** The site's own origin, when the request's cannot be trusted (proxies). */
 export function publicAppUrl(): string {
   return process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "") ?? "";
