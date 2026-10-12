@@ -7,7 +7,7 @@ import { APP_PATH } from "@/lib/site";
 export const metadata: Metadata = {
   title: "Product",
   description:
-    "What ContextForge does today: a tree-sitter indexer, a Postgres code graph, a visual explorer and an MCP endpoint for AI agents.",
+    "What CodeGraph does today: a tree-sitter indexer, a Postgres code graph, a visual explorer and an MCP endpoint for AI agents.",
   alternates: { canonical: "/product" },
 };
 
@@ -36,7 +36,7 @@ export default function ProductPage() {
     <>
       <header className="page-head">
         <div className="container">
-          <span className="eyebrow">ContextForge today</span>
+          <span className="eyebrow">CodeGraph today</span>
           <h1 className="display" style={{ fontSize: "clamp(36px, 5vw, 58px)" }}>
             A code graph for people and agents.
           </h1>
@@ -45,7 +45,7 @@ export default function ProductPage() {
             <Link href="/roadmap" style={{ color: "var(--accent-2)" }}>roadmap</Link>.
           </p>
           <div className="hero-ctas">
-            <a className="btn btn-primary" href={APP_PATH}>Launch ContextForge</a>
+            <a className="btn btn-primary" href={APP_PATH}>Launch CodeGraph</a>
             <Link className="btn btn-ghost" href="/docs/getting-started">Get started</Link>
           </div>
         </div>
@@ -57,7 +57,7 @@ export default function ProductPage() {
             <span className="badge badge-available" style={{ justifySelf: "start" }}>Available</span>
             <h2 className="h2">An indexer that understands structure</h2>
             <p className="muted" style={{ margin: 0 }}>
-              ContextForge parses each file with tree-sitter, extracts symbols and relationships,
+              CodeGraph parses each file with tree-sitter, extracts symbols and relationships,
               and resolves references across files and languages: an HTML page to the scripts it
               loads, a template to the one it extends, a service to the services it depends on.
               Resolution follows imports, then the enclosing class, then the same file, then a

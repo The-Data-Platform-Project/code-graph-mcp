@@ -28,14 +28,14 @@ export const DOCS: DocPage[] = [
     slug: "getting-started",
     title: "Getting started",
     description:
-      "Run ContextForge with Docker, index your first repository, and open it in the explorer and in Claude Code.",
+      "Run CodeGraph with Docker, index your first repository, and open it in the explorer and in Claude Code.",
     body: gettingStarted,
   },
   {
     slug: "user-guide",
     title: "User guide",
     description:
-      "Everything ContextForge does today, from indexing a repository to handing its graph to an agent.",
+      "Everything CodeGraph does today, from indexing a repository to handing its graph to an agent.",
     body: userGuide,
   },
   {
@@ -49,14 +49,14 @@ export const DOCS: DocPage[] = [
     slug: "agents",
     title: "Working with AI agents",
     description:
-      "Connect Claude Code, or another MCP client, to a ContextForge graph and use it in real workflows.",
+      "Connect Claude Code, or another MCP client, to a CodeGraph graph and use it in real workflows.",
     body: agents,
   },
   {
     slug: "api",
     title: "MCP tool reference",
     description:
-      "Every MCP tool ContextForge serves: arguments, results and real examples.",
+      "Every MCP tool CodeGraph serves: arguments, results and real examples.",
     body: api,
   },
   {
@@ -70,13 +70,13 @@ export const DOCS: DocPage[] = [
     slug: "security",
     title: "Security and data handling",
     description:
-      "What ContextForge stores, what it never stores, and how access to a graph is controlled.",
+      "What CodeGraph stores, what it never stores, and how access to a graph is controlled.",
     body: security,
   },
   {
     slug: "limitations",
     title: "Limitations",
-    description: "What ContextForge does not do yet, stated plainly.",
+    description: "What CodeGraph does not do yet, stated plainly.",
     body: limitations,
   },
   {

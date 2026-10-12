@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Roadmap",
   description:
-    "Where ContextForge is going, by capability: what is available today and what is planned. No dates.",
+    "Where CodeGraph is going, by capability: what is available today and what is planned. No dates.",
   alternates: { canonical: "/roadmap" },
 };
 
@@ -83,7 +83,7 @@ export default function RoadmapPage() {
         <div className="container">
           <span className="eyebrow">Roadmap</span>
           <h1 className="display" style={{ fontSize: "clamp(36px, 5vw, 58px)" }}>
-            Where ContextForge is going.
+            Where CodeGraph is going.
           </h1>
           <p className="lede">
             Organized by capability, not by date. <b>Available</b> means you can use it today.{" "}

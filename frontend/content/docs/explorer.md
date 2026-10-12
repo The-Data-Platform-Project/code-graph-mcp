@@ -1,6 +1,6 @@
-The graph explorer is the visual side of ContextForge. It is at `/graph`, locally `http://127.0.0.1:3000/graph`, and needs you to sign in.
+The graph explorer is the visual side of CodeGraph. It is at `/graph`, locally `http://127.0.0.1:3000/graph`, and needs you to sign in.
 
-![The graph explorer showing the ContextForge repository: the sidebar with repository, search and filters on the left, the force-directed graph in the middle, and the README preview on the right.](/site/screens/explorer.png)
+![The graph explorer showing the CodeGraph repository: the sidebar with repository, search and filters on the left, the force-directed graph in the middle, and the README preview on the right.](/site/screens/explorer.png)
 
 ## Layout
 

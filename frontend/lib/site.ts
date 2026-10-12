@@ -1,5 +1,5 @@
 /**
- * Site-wide constants for the public ContextForge pages.
+ * Site-wide constants for the public CodeGraph pages.
  *
  * SITE_URL is the canonical origin used in metadata, the sitemap and social
  * cards. It defaults to the intended domain; until contextforge.ai is pointed
@@ -7,10 +7,10 @@
  * links should resolve.
  */
 export const SITE = {
-  name: "ContextForge",
+  name: "CodeGraph",
   tagline: "Build context your agents can use.",
   description:
-    "ContextForge turns source code into a connected, queryable graph of files, " +
+    "CodeGraph turns source code into a connected, queryable graph of files, " +
     "symbols and their relationships, and serves it to AI agents over MCP.",
   url: (process.env.SITE_URL ?? "https://contextforge.ai").replace(/\/$/, ""),
   github: "https://github.com/The-Data-Platform-Project/code-graph-mcp",

@@ -118,7 +118,7 @@ function tokenRequestUrl(opts: {
   const params = new URLSearchParams({
     name: opts.name.slice(0, 40),
     description:
-      "ContextForge code graph: read repository contents to index them" +
+      "CodeGraph code graph: read repository contents to index them" +
       (opts.webhooks ? ", and add a push webhook so each push re-indexes." : "."),
     expires_in: opts.days,
     contents: "read",
@@ -203,7 +203,7 @@ export default function Settings({ tenantName, githubLogin, canManage, isAdmin, 
           <div className="logo-mark">
             <Mark mono="white" size={20} />
           </div>
-          <div className="logo-text">Context<span>Forge</span></div>
+          <div className="logo-text">Code<span>Graph</span></div>
         </a>
         <nav className="settings-nav">
           <a href="/graph">Graph</a>
@@ -473,7 +473,7 @@ function TokensSection({
 
   const requestUrl = useMemo(
     () => tokenRequestUrl({
-      name: `ContextForge ${label || owner || "repos"}`,
+      name: `CodeGraph ${label || owner || "repos"}`,
       owner, days, webhooks,
     }),
     [label, owner, days, webhooks],

@@ -37,7 +37,7 @@ export default async function VerifyPage({
           <div className="logo-mark">
             <Mark mono="white" size={22} />
           </div>
-          <div className="logo-text">Context<span>Forge</span></div>
+          <div className="logo-text">Code<span>Graph</span></div>
         </div>
         <label className="section-label" htmlFor="code">Authenticator code</label>
         <p className="login-note">

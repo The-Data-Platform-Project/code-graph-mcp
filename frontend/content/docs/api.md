@@ -1,4 +1,4 @@
-ContextForge's programmatic interface is its **MCP server**. There is no separate REST API: the `/api/*` routes behind the explorer are internal to the web app, need a browser session, and may change without notice.
+CodeGraph's programmatic interface is its **MCP server**. There is no separate REST API: the `/api/*` routes behind the explorer are internal to the web app, need a browser session, and may change without notice.
 
 ## Protocol
 

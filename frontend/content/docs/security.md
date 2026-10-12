@@ -1,4 +1,4 @@
-## What ContextForge stores
+## What CodeGraph stores
 
 | Stored | Not stored |
 |---|---|
@@ -43,7 +43,7 @@ Each graph is its own Postgres schema. The app picks the schema from the session
 ### The database
 
 - The app connects server-side only, over TLS **verified** against the database provider's certificate authority. Verification is never turned off.
-- Supabase's browser-facing roles (`anon`, `authenticated`) are revoked on every ContextForge schema, so the Supabase client API cannot read the graphs.
+- Supabase's browser-facing roles (`anon`, `authenticated`) are revoked on every CodeGraph schema, so the Supabase client API cannot read the graphs.
 - The app's database role is read-only apart from recording when a token was last used.
 
 ### Source previews

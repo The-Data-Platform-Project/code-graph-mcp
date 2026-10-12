@@ -1,13 +1,13 @@
 ## Introduction
 
-ContextForge turns a codebase into a **graph**: files, classes, functions and methods are nodes, and the relationships between them (a file imports a module, a function calls another, a class inherits from a base) are edges. That graph is stored in Postgres and served two ways:
+CodeGraph turns a codebase into a **graph**: files, classes, functions and methods are nodes, and the relationships between them (a file imports a module, a function calls another, a class inherits from a base) are edges. That graph is stored in Postgres and served two ways:
 
 - the **graph explorer**, a web view for people, and
 - an **MCP endpoint**, for AI coding agents such as Claude Code.
 
-The problem it addresses is context. To answer "what calls this function?" an agent without a graph searches the codebase and reads file after file. With the graph it makes one tool call and gets back a short, structured list. The graph provides the structure; the agent does the reasoning. ContextForge has no model of its own and no chat.
+The problem it addresses is context. To answer "what calls this function?" an agent without a graph searches the codebase and reads file after file. With the graph it makes one tool call and gets back a short, structured list. The graph provides the structure; the agent does the reasoning. CodeGraph has no model of its own and no chat.
 
-ContextForge stores **structure only**. Your source text is never written to its database; previews and snippets are read fresh from the source each time.
+CodeGraph stores **structure only**. Your source text is never written to its database; previews and snippets are read fresh from the source each time.
 
 ## Concepts
 
@@ -53,7 +53,7 @@ When a function calls `helper()`, the indexer resolves that name to a real node 
 3. the same file,
 4. a single symbol of that name anywhere in the repository.
 
-If none applies, the call is recorded as **unresolved**, with the raw text of the call. ContextForge never guesses. Calls into libraries (`os.path.join`, `con.close`) are usually unresolved because the library is not in the graph.
+If none applies, the call is recorded as **unresolved**, with the raw text of the call. CodeGraph never guesses. Calls into libraries (`os.path.join`, `con.close`) are usually unresolved because the library is not in the graph.
 
 ## Supported languages
 
@@ -167,7 +167,7 @@ What is stored, what is not, and who can reach a graph: see [security and data h
 
 ## Limitations
 
-What ContextForge does not do yet, including hosted indexing, branches and history: see [limitations](/docs/limitations).
+What CodeGraph does not do yet, including hosted indexing, branches and history: see [limitations](/docs/limitations).
 
 ## Troubleshooting
 

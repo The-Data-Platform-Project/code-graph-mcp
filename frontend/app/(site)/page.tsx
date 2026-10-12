@@ -50,12 +50,12 @@ export default function Home() {
               Build context your <span className="grad-text">agents can use.</span>
             </h1>
             <p className="lede">
-              Turn source code into connected, queryable knowledge. ContextForge maps the
+              Turn source code into connected, queryable knowledge. CodeGraph maps the
               structure and relationships within your repositories, helping developers explore
               complex software and giving AI agents the context they need to navigate it.
             </p>
             <div className="hero-ctas">
-              <a className="btn btn-primary" href={APP_PATH}>Launch ContextForge</a>
+              <a className="btn btn-primary" href={APP_PATH}>Launch CodeGraph</a>
               <Link className="btn btn-ghost" href="/docs/user-guide">Explore the User Guide</Link>
             </div>
             <div className="hero-meta">
@@ -98,7 +98,7 @@ export default function Home() {
             </div>
           </div>
           <p className="statement" style={{ marginTop: 48 }}>
-            ContextForge makes the relationships explicit, turning code structure into{" "}
+            CodeGraph makes the relationships explicit, turning code structure into{" "}
             <em>knowledge that can be explored and queried.</em>
           </p>
         </div>
@@ -111,7 +111,7 @@ export default function Home() {
             <span className="eyebrow">The context layer</span>
             <h2 className="h2">From source code to connected intelligence.</h2>
             <p className="lede">
-              ContextForge analyzes supported repositories and builds a structured graph of files,
+              CodeGraph analyzes supported repositories and builds a structured graph of files,
               symbols, and their relationships. Developers can explore the graph visually. AI
               agents can retrieve targeted context through MCP.
             </p>
@@ -159,17 +159,17 @@ export default function Home() {
 
           <Screenshot
             src="/site/screens/explorer.png"
-            alt="The ContextForge graph explorer: sidebar with repository selector, search and filters; the repository drawn as a force-directed graph; the README preview panel on the right."
+            alt="The CodeGraph graph explorer: sidebar with repository selector, search and filters; the repository drawn as a force-directed graph; the README preview panel on the right."
             width={1600}
             height={1000}
-            caption="The graph explorer, showing ContextForge's own repository."
+            caption="The graph explorer, showing CodeGraph's own repository."
           />
 
           <div className="split" style={{ marginTop: 72, alignItems: "start" }}>
             <div style={{ display: "grid", gap: 16 }}>
               <h3 className="h3" style={{ fontSize: 24 }}>Try it on a real graph</h3>
               <p className="muted" style={{ margin: 0 }}>
-                Below is the core of ContextForge&apos;s own indexer — {graph.nodes.length} nodes and{" "}
+                Below is the core of CodeGraph&apos;s own indexer — {graph.nodes.length} nodes and{" "}
                 {graph.links.length} relationships exported from a real index of the{" "}
                 <code>{DEMO_REPO}</code> repository. Hover a node to see its neighbourhood; click it,
                 or any connection in the panel, to move through the code.
@@ -211,7 +211,7 @@ export default function Home() {
             <span className="eyebrow">Built for agentic workflows</span>
             <h2 className="h2">Give agents context, not just code snippets.</h2>
             <p className="lede">
-              ContextForge exposes structured code intelligence through MCP, allowing compatible
+              CodeGraph exposes structured code intelligence through MCP, allowing compatible
               AI agents to search symbols, follow call relationships, inspect dependencies, and
               retrieve relevant source context.
             </p>
@@ -222,7 +222,7 @@ export default function Home() {
             </ul>
             <p className="faint" style={{ margin: 0, fontSize: 14 }}>
               Left: the <code>.mcp.json</code> shipped in the repository, and a real call against
-              ContextForge&apos;s own graph.
+              CodeGraph&apos;s own graph.
             </p>
             <Link className="link-arrow" href="/docs/agents">Explore agent integration</Link>
           </div>
@@ -234,7 +234,7 @@ export default function Home() {
       <section className="section" id="how-it-works">
         <div className="container">
           <div className="section-head">
-            <span className="eyebrow">How ContextForge works</span>
+            <span className="eyebrow">How CodeGraph works</span>
             <h2 className="h2">A clearer path from source to understanding.</h2>
           </div>
           <ol className="steps" style={{ listStyle: "none", padding: 0, margin: 0 }}>
@@ -283,7 +283,7 @@ export default function Home() {
                 <span className="badge badge-vision" style={{ justifySelf: "start" }}>The vision · future direction</span>
                 <h2 className="h2">From repository exploration to a living map of your software.</h2>
                 <p className="lede">
-                  ContextForge is evolving toward a hosted code intelligence platform where
+                  CodeGraph is evolving toward a hosted code intelligence platform where
                   repositories can be connected, indexed, and continuously refreshed.
                 </p>
                 <p className="muted" style={{ margin: 0 }}>
@@ -318,7 +318,7 @@ export default function Home() {
               tools that need it.
             </p>
             <div className="hero-ctas" style={{ justifyContent: "center" }}>
-              <a className="btn btn-primary" href={APP_PATH}>Launch ContextForge</a>
+              <a className="btn btn-primary" href={APP_PATH}>Launch CodeGraph</a>
               <Link className="btn btn-ghost" href="/docs/user-guide">Read the User Guide</Link>
             </div>
           </div>

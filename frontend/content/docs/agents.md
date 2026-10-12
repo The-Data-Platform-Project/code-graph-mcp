@@ -1,6 +1,6 @@
-ContextForge serves its graph over **MCP** (Model Context Protocol), so a coding agent can ask structural questions directly: who calls this, what does it call, what does this file import. Each answer is one tool call returning a short, structured result, instead of a search followed by reading whole files.
+CodeGraph serves its graph over **MCP** (Model Context Protocol), so a coding agent can ask structural questions directly: who calls this, what does it call, what does this file import. Each answer is one tool call returning a short, structured result, instead of a search followed by reading whole files.
 
-The examples on this page are real tool calls against the ContextForge repository, trimmed for length.
+The examples on this page are real tool calls against the CodeGraph repository, trimmed for length.
 
 ## Endpoints
 
@@ -45,7 +45,7 @@ Because both targets use the same two variables, Claude Code talks to one graph 
 
 ### Other MCP clients
 
-Any client that supports streamable HTTP and a custom `Authorization` header should work with the same URL and token. Claude Code is the client ContextForge is tested with.
+Any client that supports streamable HTTP and a custom `Authorization` header should work with the same URL and token. Claude Code is the client CodeGraph is tested with.
 
 ## Workflows
 

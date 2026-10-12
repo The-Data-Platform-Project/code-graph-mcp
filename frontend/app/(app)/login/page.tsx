@@ -75,7 +75,7 @@ export default async function LoginPage({
           <div className="logo-mark">
             <Mark mono="white" size={22} />
           </div>
-          <div className="logo-text">Context<span>Forge</span></div>
+          <div className="logo-text">Code<span>Graph</span></div>
         </div>
 
         {status === "pending" ? (

@@ -40,7 +40,7 @@ test("matchTotp accepts ±1 step and refuses others", () => {
 
 test("otpauth URI names the issuer and parameters", () => {
   const uri = otpauthUri(RFC_SECRET, "octocat");
-  assert.match(uri, /^otpauth:\/\/totp\/ContextForge%3Aoctocat\?/);
+  assert.match(uri, /^otpauth:\/\/totp\/CodeGraph%3Aoctocat\?/);
   assert.match(uri, /secret=GEZDGNBV/);
   assert.match(uri, /digits=6/);
 });

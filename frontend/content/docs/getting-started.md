@@ -1,6 +1,6 @@
-This guide runs ContextForge on your own machine with Docker, indexes one repository, and opens it in the graph explorer and in Claude Code. Expect about fifteen minutes, most of it the first image build.
+This guide runs CodeGraph on your own machine with Docker, indexes one repository, and opens it in the graph explorer and in Claude Code. Expect about fifteen minutes, most of it the first image build.
 
-## Two ways ContextForge runs
+## Two ways CodeGraph runs
 
 | | Self-hosted (this guide) | Hosted |
 |---|---|---|
@@ -121,7 +121,7 @@ Ask Claude Code to call the tool, or call it yourself. `path` is relative to `RE
 index_repository(name="my-service", path="my-service")
 ```
 
-The result reports what was indexed. This is a real run over the ContextForge repository itself:
+The result reports what was indexed. This is a real run over the CodeGraph repository itself:
 
 ```json
 { "repo": "code-graph-mcp", "status": "indexed", "files_indexed": 120, "files_skipped": 1, "files_deleted": 0, "nodes": 635, "edges": 3663 }
@@ -149,10 +149,10 @@ reindex_repository(name="my-service")
 { "repo": "my-service", "status": "reindexed", "files_indexed": 46, "files_skipped": 1, "files_deleted": 2, "nodes": 589, "edges": 3505 }
 ```
 
-That example is a real re-index of the ContextForge repository itself. Re-indexing is on demand: nothing watches your files.
+That example is a real re-index of the CodeGraph repository itself. Re-indexing is on demand: nothing watches your files.
 
 ## Next steps
 
-- [User guide](/docs/user-guide): everything ContextForge does, end to end.
+- [User guide](/docs/user-guide): everything CodeGraph does, end to end.
 - [Working with AI agents](/docs/agents): example workflows in Claude Code.
 - [Troubleshooting](/docs/troubleshooting): if a step above failed.

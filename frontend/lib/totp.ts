@@ -89,7 +89,7 @@ export function matchTotp(
   return found;
 }
 
-export function otpauthUri(secretB32: string, account: string, issuer = "ContextForge"): string {
+export function otpauthUri(secretB32: string, account: string, issuer = "CodeGraph"): string {
   const label = encodeURIComponent(`${issuer}:${account}`);
   const params = new URLSearchParams({
     secret: secretB32,

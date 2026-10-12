@@ -65,7 +65,7 @@ export async function pwnedCount(password: string): Promise<number | null> {
   const sha1 = createHash("sha1").update(password, "utf8").digest("hex").toUpperCase();
   try {
     const res = await fetch(`https://api.pwnedpasswords.com/range/${sha1.slice(0, 5)}`, {
-      headers: { "Add-Padding": "true", "User-Agent": "contextforge-password-check" },
+      headers: { "Add-Padding": "true", "User-Agent": "codegraph-password-check" },
       cache: "no-store",
       signal: AbortSignal.timeout(5_000),
     });

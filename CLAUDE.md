@@ -56,7 +56,7 @@ Everything Docker/pytest runs via `wsl -e bash -lc "..."`.
   serial id, so appending would duplicate the graph — then resets the id
   sequences and verifies row counts.
 - Browser UI: `http://127.0.0.1:3000/graph` — the explorer in the Next.js app
-  (`frontend/`); `/` is the public ContextForge site and `/docs` its user docs. The
+  (`frontend/`); `/` is the public CodeGraph site and `/docs` its user docs. The
   container also still serves the standalone `visualizer/index.html` at
   `http://127.0.0.1:8765/` as a zero-dependency fallback; the two share
   `lib/render.js`, but the React panel is a separate implementation, so a UI

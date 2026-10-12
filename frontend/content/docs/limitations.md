@@ -1,4 +1,4 @@
-ContextForge is useful today, and deliberately narrow. This page lists what it does **not** do yet, so you can decide whether it fits. Several items are on the [roadmap](/roadmap).
+CodeGraph is useful today, and deliberately narrow. This page lists what it does **not** do yet, so you can decide whether it fits. Several items are on the [roadmap](/roadmap).
 
 ## Access and onboarding
 

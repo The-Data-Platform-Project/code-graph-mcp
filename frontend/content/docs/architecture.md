@@ -1,6 +1,6 @@
 ## Overview
 
-ContextForge has three parts:
+CodeGraph has three parts:
 
 1. an **indexer** that parses repositories into a graph,
 2. a **Postgres graph** that holds structure only, and

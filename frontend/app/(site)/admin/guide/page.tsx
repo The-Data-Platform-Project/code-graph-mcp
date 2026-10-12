@@ -44,7 +44,7 @@ export default async function AdminGuidePage() {
       current=""
       eyebrow="Administration"
       title="Admin guide"
-      description="Running ContextForge: deployment, repositories, access, and day-to-day operations."
+      description="Running CodeGraph: deployment, repositories, access, and day-to-day operations."
       html={html}
       tocSlot={<AdminToc toc={toc} />}
       before={
