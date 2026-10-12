@@ -37,14 +37,31 @@ export function ownerTenantSlug(): string {
   return process.env.OWNER_TENANT_SLUG?.trim() || "owner";
 }
 
+/**
+ * The owner's break-glass password. Its strength is enforced, not trusted:
+ * lib/password-policy.ts checks length, character classes, the 10,000 most
+ * common passwords, zxcvbn and Have I Been Pwned before any login uses it.
+ */
 export function ownerPassword(): string {
-  const value = required("OWNER_PASSWORD");
-  // A single shared password is the only thing in front of this page until
-  // Supabase Auth lands, so refuse a weak one rather than run with it.
-  if (value.length < 12) {
-    throw new Error("OWNER_PASSWORD must be at least 12 characters.");
+  return required("OWNER_PASSWORD");
+}
+
+/**
+ * The owner login's TOTP secret (base32). Password sign-in is refused without
+ * it: the owner login is an administrator, and administrators need 2FA.
+ * Generate one with `node --experimental-strip-types scripts/owner-totp.mts`.
+ */
+export function ownerTotpSecret(): string {
+  const value = (process.env.OWNER_TOTP_SECRET ?? "").replace(/\s/g, "").toUpperCase();
+  if (!/^[A-Z2-7]{32,}$/.test(value)) {
+    throw new Error("OWNER_TOTP_SECRET must be a base32 secret of at least 160 bits (32 characters).");
   }
   return value;
+}
+
+/** Seals users' TOTP secrets at rest (64 hex characters: openssl rand -hex 32). */
+export function mfaKeyHex(): string {
+  return required("MFA_ENCRYPTION_KEY");
 }
 
 export function sessionSecret(): string {

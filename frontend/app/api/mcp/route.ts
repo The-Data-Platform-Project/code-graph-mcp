@@ -15,9 +15,12 @@
  *           serves only the owner tenant until it learns x-code-graph-tenant.
  */
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { clientIp, ipHash, logAuthEvent } from "@/lib/authlog";
+import { MCP_BAD_TOKEN_PER_IP } from "@/lib/authpolicy";
 import { tenantByToken } from "@/lib/control";
 import { mcpBackend, mcpUpstreamToken, mcpUpstreamUrl, ownerTenantSlug } from "@/lib/env";
 import { buildMcpServer } from "@/lib/mcpServer";
+import { failureState, recordFailure } from "@/lib/ratelimit";
 import type { Tenant } from "@/lib/tenancy";
 
 export const runtime = "nodejs";
@@ -99,9 +102,23 @@ async function proxy(req: Request, tenant: Tenant): Promise<Response> {
 }
 
 async function handle(req: Request): Promise<Response> {
+  // Tokens are 256-bit random values, so guessing is hopeless; still, an IP
+  // that keeps presenting bad tokens is cut off (20 failures per 15 minutes).
+  const ip = ipHash(clientIp(req.headers));
+  const failKey = `mcp:ip:${ip}`;
   let tenant: Tenant | null;
   try {
+    const lock = await failureState(failKey);
+    if (lock.lockedForSec > 0) {
+      return jsonRpcError(429, -32001, "Too many failed authentications.", {
+        "Retry-After": String(lock.lockedForSec),
+      });
+    }
     tenant = await authenticate(req);
+    if (!tenant) {
+      await recordFailure(failKey, MCP_BAD_TOKEN_PER_IP);
+      await logAuthEvent("mcp_token", "failure", null, ip);
+    }
   } catch (err) {
     console.error(err);
     return jsonRpcError(500, -32603, "Internal error.");

@@ -208,3 +208,64 @@ def test_secretbox_opens_what_the_app_sealed():
 def test_parse_key_rejects_short_keys():
     with pytest.raises(ValueError):
         secretbox.parse_key("abcd")
+
+
+# ── Sign-in security tables ─────────────────────────────────────────────────
+
+
+def test_auth_tables_exist(ready):
+    tables = {
+        r["table_name"]
+        for r in ready.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = 'control'"
+        ).fetchall()
+    }
+    assert {"sessions", "user_mfa", "mfa_backup_codes", "mfa_replay", "rate_limits",
+            "auth_events"} <= tables
+
+
+def test_app_role_can_append_but_not_erase_auth_events(app_con):
+    app_con.execute(
+        "INSERT INTO control.auth_events (kind, outcome, subject) VALUES ('owner_login', 'failure', 'owner')"
+    )
+    app_con.commit()
+    with pytest.raises(psycopg.errors.InsufficientPrivilege):
+        app_con.execute("DELETE FROM control.auth_events")
+    app_con.rollback()
+    with pytest.raises(psycopg.errors.InsufficientPrivilege):
+        app_con.execute("UPDATE control.auth_events SET outcome = 'success'")
+    app_con.rollback()
+
+
+def test_app_role_manages_sessions_and_rate_limits(app_con):
+    app_con.execute(
+        "INSERT INTO control.sessions (id_hash, sub, tenant_slug, role, mfa_state, expires_at) "
+        "VALUES ('h1', 'owner', 'owner', 'owner', 'pending', now() + interval '10 minutes')"
+    )
+    app_con.execute("UPDATE control.sessions SET revoked_at = now() WHERE id_hash = 'h1'")
+    app_con.execute(
+        "INSERT INTO control.rate_limits (key, hits) VALUES ('rl:login:ip:x', 1) "
+        "ON CONFLICT (key) DO UPDATE SET hits = control.rate_limits.hits + 1"
+    )
+    app_con.execute("INSERT INTO control.mfa_replay (subject, last_step) VALUES ('owner', 1)")
+    app_con.commit()
+
+
+def test_prune_auth_removes_only_stale_rows(ready):
+    ready.execute(
+        "INSERT INTO control.sessions (id_hash, sub, tenant_slug, role, mfa_state, expires_at) VALUES "
+        "('old', 'owner', 'owner', 'owner', 'verified', now() - interval '2 days'), "
+        "('live', 'owner', 'owner', 'owner', 'verified', now() + interval '2 days')"
+    )
+    ready.execute(
+        "INSERT INTO control.rate_limits (key, window_start, hits) VALUES "
+        "('rl:old', now() - interval '2 days', 3), ('rl:new', now(), 3)"
+    )
+    ready.execute(
+        "INSERT INTO control.auth_events (at, kind, outcome) VALUES "
+        "(now() - interval '100 days', 'x', 'info'), (now(), 'y', 'info')"
+    )
+    counts = control.prune_auth(ready)
+    assert counts == {"sessions": 1, "rate_limits": 1, "auth_events": 1}
+    left = ready.execute("SELECT id_hash FROM control.sessions").fetchall()
+    assert left == [{"id_hash": "live"}]

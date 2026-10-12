@@ -22,6 +22,7 @@ const GROUPS: Group[] = [
       { title: "Owner sign-in", body: "A break-glass owner password with a signed session.", status: "available" },
       { title: "Personal MCP tokens", body: "Hashed, shown once, scoped to one graph, revocable by the administrator.", status: "available" },
       { title: "Sign in with GitHub", body: "Accounts for other people. GitHub is asked only who they are; repository access is granted separately, per token.", status: "available" },
+      { title: "Two-factor authentication", body: "Authenticator apps with single-use backup codes. Required for administrators and the owner login.", status: "available" },
       { title: "Owner approval", body: "New accounts wait for approval on the settings page; approving one provisions its own graph.", status: "available" },
       { title: "Sign in with Google", body: "A second identity provider for people without GitHub accounts.", status: "planned" },
       { title: "Admin portal", body: "Graphs, tokens, index jobs and an audit log in one place, beyond today's approvals on the settings page.", status: "planned" },

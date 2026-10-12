@@ -57,7 +57,10 @@ The public [getting started guide](/docs/getting-started) is the full procedure.
 | `DATABASE_URL` | yes | `postgresql://codegraph_app.<project-ref>:<password>@<pooler-host>:6543/postgres` when hosted. URL-encode special characters in the password. |
 | `DATABASE_CA_CERT` | hosted | The full PEM of Supabase's CA. A literal `\n` is accepted in place of newlines. |
 | `PGPOOL_MAX` | hosted | `1` on Vercel: one connection per function instance. |
-| `OWNER_PASSWORD` | yes, unless GitHub sign-in is set up | The owner's break-glass sign-in password, 12 or more characters. |
+| `OWNER_PASSWORD` | yes, unless GitHub sign-in is set up | The owner's break-glass sign-in password. Must pass the password policy. |
+| `OWNER_TOTP_SECRET` | with `OWNER_PASSWORD` | The owner login's authenticator secret (`scripts/owner-totp.mts`). |
+| `MFA_ENCRYPTION_KEY` | for 2FA | 64 hex characters. Seals users' authenticator secrets. |
+| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | recommended | Cloudflare Turnstile CAPTCHA after 3 failed sign-ins. |
 | `SESSION_SECRET` | yes | Signs session cookies, 32 or more characters (`openssl rand -hex 32`). |
 | `OWNER_TENANT_SLUG` | no | The tenant the owner signs in to. Default `owner`. |
 | `SOURCE_PROVIDER` | no | `github` (default), `mcp` or `none`. |
@@ -181,9 +184,11 @@ Tenants are cached by the app for 60 seconds; connections are read on each reque
 - **Continue with GitHub** (a GitHub OAuth app; callback `https://<app>/api/auth/github/callback`). GitHub is asked only for `read:user user:email`; the OAuth token is used once to read the profile and discarded.
 - A first sign-in creates a **pending** account. Approve it on `/settings` → **People**: approval provisions the person's own graph, `tenant_gh_<github id>`. **Suspend** ends their web access on their next request (the session is re-checked against `control.users` every time). MCP tokens belong to the tenant, not the person: revoke theirs with `scripts/mcp_token.py` too.
 - `OWNER_GITHUB_LOGIN` signs straight into the owner tenant as a platform admin. Platform admin (`control.users.is_platform_admin`) is separate from owning a tenant: every approved person owns their own graph, only admins see People and this guide.
-- The owner password (`OWNER_PASSWORD`) remains as a break-glass sign-in; unset it to switch it off.
-- Sessions are signed cookies (`cg_session`) valid for seven days. **Changing `SESSION_SECRET` signs everyone out.**
-- `frontend/lib/viewer.ts` (`getViewer()`) is the single point where a request becomes a viewer: user, role and tenant.
+- The owner password (`OWNER_PASSWORD`) remains as a break-glass sign-in; unset it to switch it off. It always asks for a code from the authenticator set up with `OWNER_TOTP_SECRET`, and it is refused while the password fails the policy (12+ characters, mixed classes, not in the top 10,000, zxcvbn 3+, not in Have I Been Pwned). Check a candidate with `node --experimental-strip-types scripts/check-password.mts` in `frontend/`.
+- **2FA is mandatory for administrators.** A platform admin without it reaches neither `/admin` nor People until they turn it on in Settings → Security (authenticator app, plus ten single-use backup codes). Anyone else may turn it on too. **Reset 2FA** in People helps someone who lost both phone and codes.
+- Sessions are server-side (`control.sessions`); the `cg_session` cookie is httpOnly, Secure and SameSite=Strict and only names one, for seven days at most. Signing out, suspension and Reset 2FA end sessions at once. **Changing `SESSION_SECRET` signs everyone out.**
+- Sign-in is rate limited, with CAPTCHA after 3 failures (when Turnstile is configured), exponential backoff and lockout; the limits are in `frontend/lib/authpolicy.ts`. Every failure and lockout is in `control.auth_events`.
+- `frontend/lib/viewer.ts` (`getViewer()`) is the single point where a request becomes a viewer: user, role, tenant and 2FA state. Admin checks are on the server only (`canAdminister`, `withAdmin` on every `/api/admin` route, checked in CI).
 
 ### GitHub tokens and repositories
 

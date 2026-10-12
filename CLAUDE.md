@@ -74,9 +74,15 @@ built vs designed) and docs/ADMIN_GUIDE.md (deploy/operate).
   owns which (`src/code_graph/control.py`). TS schema-qualifies every table via
   `lib/tenancy.ts` `tbl()`; Python points `search_path` at it (`GRAPH_SCHEMA`).
   A schema name only ever comes from a token or session — never a request field.
-- `lib/viewer.ts` `getViewer()` is the single auth seam: the owner-password
-  cookie (`sub "owner"`) or a GitHub sign-in (`sub "user:<id>"`, re-checked
-  against `control.users`/`members` every request). Sign-in is a GitHub OAuth
+- `lib/viewer.ts` `getViewer()` is the single auth seam: the session cookie
+  (httpOnly, SameSite=Strict) names a server-side `control.sessions` row,
+  re-read every request; `sub "owner"` is the password + TOTP login,
+  `sub "user:<id>"` a GitHub sign-in (also re-checked against
+  `control.users`/`members`). A session owing its 2FA code is `pending` and is
+  not a viewer. Auth limits live in `lib/authpolicy.ts` (Postgres-backed
+  `lib/ratelimit.ts`); every failure goes to `control.auth_events`. Admin =
+  `canAdminister` (platform admin AND 2FA-verified session); every
+  `/api/admin` route uses `withAdmin` (CI: `npm run check:admin-routes`). Sign-in is a GitHub OAuth
   app (`app/api/auth/github/*`, identity scopes only); new people are
   `pending` until a platform admin approves them on `/settings`, which calls
   `control.provision_tenant` (SECURITY DEFINER; the app role has no DDL).

@@ -118,6 +118,12 @@ services:
       - GITHUB_TOKEN_KEY=${GITHUB_TOKEN_KEY:-}
       - INDEXER_URL=${INDEXER_URL:-}
       - INDEXER_SECRET=${INDEXER_SECRET:-}
+      # Sign-in security (.env.example): the owner login's 2FA secret, the key
+      # sealing users' 2FA secrets, and the optional CAPTCHA.
+      - OWNER_TOTP_SECRET=${OWNER_TOTP_SECRET:-}
+      - MFA_ENCRYPTION_KEY=${MFA_ENCRYPTION_KEY:-}
+      - TURNSTILE_SITE_KEY=${TURNSTILE_SITE_KEY:-}
+      - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY:-}
     mem_limit: "512m"
 
   ngrok:

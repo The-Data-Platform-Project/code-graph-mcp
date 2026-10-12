@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 import psycopg
 
+from .. import control
 from . import jobs, signing
 
 
@@ -23,14 +24,17 @@ class Outcome:
 
 
 def on_schedule(con: psycopg.Connection) -> Outcome:
-    """The daily run: close out dead jobs, then queue every daily connection."""
+    """The daily run: close out dead jobs, prune auth state, queue daily connections."""
     stale = jobs.fail_stale(con)
+    pruned = control.prune_auth(con)
     queued = []
     for row in jobs.scheduled_connections(con):
         job_id = jobs.enqueue(con, row["tenant_id"], row["repo_name"], "schedule")
         if job_id is not None:
             queued.append(job_id)
-    return Outcome(200, {"queued": len(queued), "stale_failed": stale}, queued)
+    return Outcome(
+        200, {"queued": len(queued), "stale_failed": stale, "pruned": pruned}, queued
+    )
 
 
 def on_github(

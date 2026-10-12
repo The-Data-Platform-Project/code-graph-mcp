@@ -59,6 +59,10 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci --no-audit --no-fund
+      - name: Every admin API route enforces admin + 2FA on the server
+        run: npm run check:admin-routes
+      - name: Auth unit tests (TOTP vectors, password policy)
+        run: npm test
       - name: Typecheck
         run: npx tsc --noEmit
       - name: Build

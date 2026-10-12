@@ -98,8 +98,12 @@ class TokenAuthMiddleware:
             if name == "x-code-graph-token":
                 presented = raw_value.decode("latin-1")
                 break
-        # Constant time: the comparison must not leak the token's prefix.
-        return hmac.compare_digest(presented.strip(), self._token)
+        # Constant time: the comparison must not leak the token's prefix. Bytes,
+        # not str: compare_digest raises on non-ASCII str, which would turn a
+        # junk header into a 500 instead of a 401.
+        return hmac.compare_digest(
+            presented.strip().encode("latin-1"), self._token.encode("utf-8")
+        )
 
 
 async def _unauthorized(send) -> None:

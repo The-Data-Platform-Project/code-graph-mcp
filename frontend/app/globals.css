@@ -617,3 +617,13 @@
   .settings-row { flex-direction: column; }
   .settings-row-actions { justify-content: flex-start; }
 }
+
+/* Two-factor step: a quiet way back out. */
+.login-shell { flex-direction: column; gap: 12px; }
+.link-button {
+  background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--teal-700); font: 600 12px var(--font-sans), sans-serif; text-decoration: underline;
+}
+.cf-turnstile { min-height: 65px; }
+.settings-qr { width: 180px; height: 180px; background: #fff; padding: 8px; border-radius: 8px; border: 1px solid var(--gray-200); }
+.settings-codes { background: var(--white); border: 1px solid var(--gray-200); border-radius: 8px; padding: 10px 12px; line-height: 1.8; }

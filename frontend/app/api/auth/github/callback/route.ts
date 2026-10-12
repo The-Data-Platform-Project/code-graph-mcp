@@ -1,10 +1,14 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextRequest } from "next/server";
 import { primaryMembership, recordSignIn, type GithubProfile } from "@/lib/accounts";
+import { logAuthEvent } from "@/lib/authlog";
+import { OAUTH_PER_IP } from "@/lib/authpolicy";
 import { tenantBySlug } from "@/lib/control";
 import { githubOAuth, ownerGithubLogin, ownerTenantSlug, publicAppUrl } from "@/lib/env";
 import { ghFetch } from "@/lib/github";
-import { OAUTH_COOKIE, safeTarget, seeOther, signedIn } from "@/lib/signin";
+import { mfaEnabled } from "@/lib/mfa";
+import { consume } from "@/lib/ratelimit";
+import { OAUTH_COOKIE, bouncePage, requestMeta, safeTarget, seeOther, startSession } from "@/lib/signin";
 
 export const dynamic = "force-dynamic";
 
@@ -44,11 +48,23 @@ async function profileFrom(accessToken: string): Promise<GithubProfile | null> {
  * it could not read a repository anyway.
  *
  * New people are recorded as pending and told so; the owner approves them in
- * /settings. An approved person gets a session for their own tenant.
+ * /settings. An approved person gets a session for their own tenant; one who
+ * has turned on 2FA gets a pending session and is sent to enter their code.
+ *
+ * The answer is a same-origin bounce page, not a redirect: the session cookie
+ * is SameSite=Strict and would not ride the rest of GitHub's redirect chain.
+ * Rate limited per IP (10 per 15 minutes); every outcome is logged.
  */
 export async function GET(request: NextRequest) {
   const oauth = githubOAuth();
   if (!oauth) return failed("config");
+
+  const meta = requestMeta(request);
+  const rate = await consume(`oauth-callback:ip:${meta.ipHash}`, OAUTH_PER_IP);
+  if (!rate.allowed) {
+    await logAuthEvent("github_callback", "blocked", null, meta.ipHash, { reason: "rate_limit" });
+    return failed("rate");
+  }
 
   let saved: { state?: string; next?: string } = {};
   try {
@@ -59,7 +75,10 @@ export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
   const code = params.get("code");
   if (params.get("error") === "access_denied") return failed("github_denied");
-  if (!code || !sameState(params.get("state") ?? "", saved.state ?? "")) return failed("github_state");
+  if (!code || !sameState(params.get("state") ?? "", saved.state ?? "")) {
+    await logAuthEvent("github_callback", "failure", null, meta.ipHash, { reason: "state_mismatch" });
+    return failed("github_state");
+  }
 
   const origin = publicAppUrl() || request.nextUrl.origin;
   let accessToken = "";
@@ -80,28 +99,48 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error("GitHub token exchange failed:", err instanceof Error ? err.message : err);
   }
-  if (!accessToken) return failed("github_exchange");
+  if (!accessToken) {
+    await logAuthEvent("github_callback", "failure", null, meta.ipHash, { reason: "code_exchange" });
+    return failed("github_exchange");
+  }
 
   const profile = await profileFrom(accessToken);
-  if (!profile) return failed("github_exchange");
+  if (!profile) {
+    await logAuthEvent("github_callback", "failure", null, meta.ipHash, { reason: "profile" });
+    return failed("github_exchange");
+  }
 
   const isOwner = !!ownerGithubLogin() && profile.login.toLowerCase() === ownerGithubLogin();
   const ownerTenant = isOwner ? await tenantBySlug(ownerTenantSlug()) : null;
   const user = await recordSignIn(profile, ownerTenant ? { tenantId: ownerTenant.id } : null);
 
-  if (user.status === "suspended") return failed("suspended");
+  const subject = `user:${user.id}`;
+  if (user.status === "suspended") {
+    await logAuthEvent("github_sign_in", "blocked", subject, meta.ipHash, { reason: "suspended" });
+    return failed("suspended");
+  }
   const membership = user.status === "active" ? await primaryMembership(Number(user.id)) : null;
   if (!membership) {
+    await logAuthEvent("github_sign_in", "info", subject, meta.ipHash, { reason: "pending_approval" });
     const res = seeOther(`/login?status=pending&who=${encodeURIComponent(profile.login)}`);
     res.cookies.set(OAUTH_COOKIE, "", { path: "/api/auth/github", maxAge: 0 });
     return res;
   }
 
-  const res = await signedIn(safeTarget(saved.next), {
-    sub: `user:${user.id}`,
-    tenant: membership.slug,
-    role: membership.role,
-  });
+  const target = safeTarget(saved.next);
+  const needsCode = await mfaEnabled(Number(user.id));
+  await logAuthEvent("github_sign_in", "success", subject, meta.ipHash, { step: needsCode ? "github" : "complete" });
+  const res = await startSession(
+    request,
+    {
+      sub: subject,
+      userId: Number(user.id),
+      tenant: membership.slug,
+      role: membership.role,
+      mfa: needsCode ? "pending" : "none",
+    },
+    bouncePage(needsCode ? `/login/verify?next=${encodeURIComponent(target)}` : target),
+  );
   res.cookies.set(OAUTH_COOKIE, "", { path: "/api/auth/github", maxAge: 0 });
   return res;
 }

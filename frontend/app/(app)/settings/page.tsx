@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Settings from "@/components/Settings";
-import { canAdminister, canManageTenant } from "@/lib/access";
+import { adminNeedsMfa, canAdminister, canManageTenant } from "@/lib/access";
 import { getViewer } from "@/lib/viewer";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +20,7 @@ export default async function SettingsPage() {
       githubLogin={viewer.githubLogin}
       canManage={canManageTenant(viewer)}
       isAdmin={canAdminister(viewer)}
+      adminNeedsMfa={adminNeedsMfa(viewer)}
     />
   );
 }

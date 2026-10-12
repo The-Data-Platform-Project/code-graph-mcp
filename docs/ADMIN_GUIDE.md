@@ -134,10 +134,30 @@ around this by turning verification off.
 
 ```bash
 openssl rand -hex 32     # SESSION_SECRET
+openssl rand -hex 32     # MFA_ENCRYPTION_KEY: seals users' authenticator secrets
 ```
 
-Choose an `OWNER_PASSWORD` of at least 12 characters. That is what you type on
-the login page.
+Choose `OWNER_PASSWORD` with the checker, which shows a live strength meter
+and gives the verdict the server enforces (12+ characters, upper, lower, digit
+and symbol, not in the 10,000 most common passwords, zxcvbn score 3 or more,
+not in Have I Been Pwned). The server refuses every owner login while the
+configured password fails that policy:
+
+```bash
+cd frontend && node --experimental-strip-types scripts/check-password.mts
+```
+
+The owner login also needs an authenticator code. Create its secret and scan
+the QR code it prints into your authenticator app; the value is
+`OWNER_TOTP_SECRET`:
+
+```bash
+cd frontend && node --experimental-strip-types scripts/owner-totp.mts
+```
+
+Optional but recommended: a free [Cloudflare Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile)
+widget (`TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`), shown after 3 failed
+owner sign-ins.
 
 For source previews of repos connected without a token of their own (such as
 the ones the loader created), create a **fine-grained GitHub token** with
@@ -169,7 +189,10 @@ is wrong. In **Settings → Build and Deployment**, set **Root Directory =
 | `DATABASE_CA_CERT` | the full PEM from 2.3, including the BEGIN/END lines |
 | `PGPOOL_MAX` | `1` |
 | `OWNER_PASSWORD` | from 2.4 |
+| `OWNER_TOTP_SECRET` | from 2.4 |
 | `SESSION_SECRET` | from 2.4 |
+| `MFA_ENCRYPTION_KEY` | from 2.4 |
+| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | optional, from 2.4 |
 | `SOURCE_PROVIDER` | `github` |
 | `GITHUB_TOKEN` | from 2.4 |
 | `MCP_BACKEND` | `native` |
@@ -253,6 +276,19 @@ first. **Approve** provisions their graph; **Suspend** cuts off their next
 web request (the session is re-checked on every request). MCP tokens belong to
 the tenant, so also revoke theirs: `$PY scripts/mcp_token.py list --tenant gh_<id>`, then `revoke`.
 
+**Sign-in security**, enforced on the server (`frontend/lib/authpolicy.ts`):
+
+| Surface | Limits |
+|---|---|
+| Owner password | 5 attempts per IP per 15 min; CAPTCHA after 3 failures; exponential backoff (2 s, 4 s, ... up to 15 min); account lockout after 10 failures (15 min, doubling each time it recurs) |
+| 2FA codes (sign-in, setup, disable, new backup codes) | 5 per session and 10 per IP per 15 min; backoff after 3 failures; lockout after 5 |
+| GitHub sign-in start and callback | 10 per IP per 15 min each |
+| MCP bearer tokens | backoff after 3 failures per IP, lockout after 20 |
+
+- Sessions live in `control.sessions`; the cookie (httpOnly, Secure, SameSite=Strict) only names one. Signing out ends it on the server.
+- 2FA is mandatory for administrators: a platform admin without it can use the app but not `/admin` or the People list until they turn it on in `/settings` → Security. The owner password login always asks for a code.
+- Every failure, lockout and CAPTCHA refusal is in `control.auth_events`, which the app role can append to but not change. The indexer's daily run prunes events older than 90 days, expired sessions and idle counters.
+
 ### 2.8 The cloud indexer
 
 Indexes connected repositories from GitHub on AWS (free tier), deployed by
@@ -273,8 +309,13 @@ read-only app role.
 | Replace a lost token | revoke it, create a new one. Tokens cannot be recovered. |
 | Reload the graph | re-run the loader with `--replace` (and the same `--github` flags) |
 | Change a repo's GitHub mapping or ref | SQL below |
-| Log everyone out | change `SESSION_SECRET` and redeploy |
-| Change the login password | change `OWNER_PASSWORD` and redeploy |
+| Log everyone out | `UPDATE control.sessions SET revoked_at = now() WHERE revoked_at IS NULL;` (or change `SESSION_SECRET` and redeploy) |
+| Log one person out | `/settings` → People → Suspend, or `UPDATE control.sessions SET revoked_at = now() WHERE sub = 'user:<id>';` |
+| Change the login password | check it with `scripts/check-password.mts`, change `OWNER_PASSWORD`, redeploy |
+| Replace the owner's authenticator | `scripts/owner-totp.mts`, change `OWNER_TOTP_SECRET`, redeploy |
+| Someone lost their phone and backup codes | `/settings` → People → Reset 2FA |
+| See failed sign-ins and lockouts | `SELECT at, kind, outcome, subject, detail FROM control.auth_events ORDER BY at DESC LIMIT 50;` |
+| Lift a lockout early | `DELETE FROM control.rate_limits WHERE key LIKE 'fail:%';` |
 | Check both MCP backends agree | [§4 parity check](#parity-check) |
 | Approve or suspend a person | `/settings` → People |
 | See index runs and failures | `/settings` → Recent index runs (per tenant), or `control.index_jobs` |
@@ -428,3 +469,4 @@ read-only role.
 | 2026-09-26 | `99d65da` | moved to Supabase `rryfmnktebyvfxaftvyv` (`ap-southeast-1`); Vercel functions in `sin1`; loader `--exclude` |
 | 2026-09-28 | `7a21111` | `tests/diagnostics/`; production live on `code-graph-viz.vercel.app`, tracking this branch |
 | 2026-10-04 | `feature/graph-etl` | sign-in with GitHub and approvals; fine-grained GitHub tokens and repo connections on `/settings`; cloud indexer on AWS Lambda (daily, on push, on demand) deployed by GitHub Actions; CI workflow |
+| 2026-10-12 | `feature/graph-etl` | auth hardening: server-side sessions (SameSite=Strict, revocable), TOTP 2FA with backup codes (mandatory for admins and the owner login), rate limiting, backoff, lockout, CAPTCHA, auth event log, owner password policy (zxcvbn, top-10k, HIBP), CSRF Origin checks, security headers |

@@ -17,6 +17,13 @@ data, and therefore must survive a reindex:
 - `github_tokens`     a tenant's fine-grained GitHub tokens, encrypted (secretbox.py);
                       a repo connection names the one that can read its repository
 - `index_jobs`        the indexer's work log: one row per index run (etl/jobs.py)
+- `sessions`          server-side sign-in sessions; the cookie only names one, so
+                      signing out, suspension and "sign out everywhere" are real
+- `user_mfa`, `mfa_backup_codes`, `mfa_replay`
+                      TOTP two-factor: sealed secrets, hashed one-time backup codes,
+                      and the last accepted time step (no code is accepted twice)
+- `rate_limits`       counters behind sign-in rate limiting, backoff and lockout
+- `auth_events`       append-only log of sign-in, 2FA and lockout events
 
 A repository's GitHub coordinates deliberately do not live on the graph's own
 `repos` table: `index_full` deletes and recreates that row, so a full reindex
@@ -177,6 +184,79 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_index_jobs_one_queued
     ON control.index_jobs (tenant_id, repo_name) WHERE status = 'queued';
 CREATE INDEX IF NOT EXISTS idx_index_jobs_recent
     ON control.index_jobs (tenant_id, created_at DESC);
+
+-- Sessions. The browser holds a signed cookie naming a session id; only the
+-- SHA-256 of that id is stored, so a database leak does not hand out sessions.
+-- mfa_state: 'none' (no second factor required), 'pending' (password or GitHub
+-- done, code not yet given: may only reach the verify page), 'verified'.
+CREATE TABLE IF NOT EXISTS control.sessions (
+    id_hash        TEXT PRIMARY KEY,
+    sub            TEXT NOT NULL,
+    user_id        BIGINT REFERENCES control.users(id) ON DELETE CASCADE,
+    tenant_slug    TEXT NOT NULL,
+    role           TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'member')),
+    mfa_state      TEXT NOT NULL CHECK (mfa_state IN ('none', 'pending', 'verified')),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at     TIMESTAMPTZ NOT NULL,
+    last_seen_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    revoked_at     TIMESTAMPTZ,
+    ip_hash        TEXT,
+    user_agent     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_sub ON control.sessions (sub) WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON control.sessions (expires_at);
+
+-- TOTP (RFC 6238). The secret is sealed like a GitHub token (secretbox, AAD
+-- names the user) under MFA_ENCRYPTION_KEY; enabled_at is NULL while the user
+-- is still confirming enrolment with a first code.
+CREATE TABLE IF NOT EXISTS control.user_mfa (
+    user_id        BIGINT PRIMARY KEY REFERENCES control.users(id) ON DELETE CASCADE,
+    secret_sealed  TEXT NOT NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    enabled_at     TIMESTAMPTZ
+);
+
+-- Ten single-use backup codes per user, each stored as a salted scrypt hash.
+CREATE TABLE IF NOT EXISTS control.mfa_backup_codes (
+    id         BIGSERIAL PRIMARY KEY,
+    user_id    BIGINT NOT NULL REFERENCES control.users(id) ON DELETE CASCADE,
+    code_hash  TEXT NOT NULL,
+    used_at    TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_backup_codes_user ON control.mfa_backup_codes (user_id);
+
+-- The last TOTP time step accepted per subject ('owner' or 'user:<id>'): a code
+-- for that step or any earlier one is refused, so an intercepted code cannot be
+-- replayed inside its 30-second window.
+CREATE TABLE IF NOT EXISTS control.mfa_replay (
+    subject    TEXT PRIMARY KEY,
+    last_step  BIGINT NOT NULL
+);
+
+-- Rate limiting and lockout. key = '<scope>:<hashed ip | subject>'. hits count
+-- requests in the current window; failures count failed attempts, which drive
+-- the CAPTCHA threshold, exponential backoff (locked_until) and lockout.
+CREATE TABLE IF NOT EXISTS control.rate_limits (
+    key           TEXT PRIMARY KEY,
+    window_start  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    hits          INTEGER NOT NULL DEFAULT 0,
+    failures      INTEGER NOT NULL DEFAULT 0,
+    locked_until  TIMESTAMPTZ,
+    lock_level    INTEGER NOT NULL DEFAULT 0
+);
+
+-- Append-only. The app role may insert but not change or delete rows.
+CREATE TABLE IF NOT EXISTS control.auth_events (
+    id        BIGSERIAL PRIMARY KEY,
+    at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    kind      TEXT NOT NULL,
+    outcome   TEXT NOT NULL CHECK (outcome IN ('success', 'failure', 'blocked', 'info')),
+    subject   TEXT,
+    ip_hash   TEXT,
+    detail    JSONB
+);
+CREATE INDEX IF NOT EXISTS idx_auth_events_at ON control.auth_events (at DESC);
+CREATE INDEX IF NOT EXISTS idx_auth_events_subject ON control.auth_events (subject, at DESC);
 """
 
 
@@ -280,7 +360,13 @@ def ensure_control(con: psycopg.Connection) -> None:
 
 # The tables the app writes on a user's behalf. Everything else in `control`
 # it may only read (plus mcp_tokens.last_used_at).
-APP_WRITABLE = ("users", "members", "github_tokens", "repo_connections", "index_jobs")
+APP_WRITABLE = (
+    "users", "members", "github_tokens", "repo_connections", "index_jobs",
+    "sessions", "user_mfa", "mfa_backup_codes", "mfa_replay", "rate_limits",
+)
+# Written by the app but never changed or removed by it: an attacker holding the
+# app's credentials cannot erase the trail of their own failed attempts.
+APP_APPEND_ONLY = ("auth_events",)
 
 
 def grant_app_role(con: psycopg.Connection, role: str) -> None:
@@ -302,6 +388,10 @@ def grant_app_role(con: psycopg.Connection, role: str) -> None:
             sql.SQL("GRANT INSERT, UPDATE, DELETE ON {} TO {}").format(
                 sql.Identifier("control", table), ident
             )
+        )
+    for table in APP_APPEND_ONLY:
+        con.execute(
+            sql.SQL("GRANT INSERT ON {} TO {}").format(sql.Identifier("control", table), ident)
         )
     con.execute(
         sql.SQL("GRANT USAGE ON ALL SEQUENCES IN SCHEMA control TO {}").format(ident)
@@ -398,3 +488,28 @@ def revoke_token(con: psycopg.Connection, token_id: int) -> bool:
         (token_id,),
     )
     return cur.rowcount == 1
+
+
+# ── Housekeeping ────────────────────────────────────────────────────────────
+
+
+def prune_auth(con: psycopg.Connection, keep_events_days: int = 90) -> dict[str, int]:
+    """Delete expired sessions, idle rate-limit rows and old auth events.
+
+    Run daily by the indexer's schedule handler (as the database owner: the app
+    role cannot delete auth events).
+    """
+    counts = {}
+    counts["sessions"] = con.execute(
+        "DELETE FROM control.sessions WHERE expires_at < now() - interval '1 day' "
+        "OR revoked_at < now() - interval '1 day'"
+    ).rowcount
+    counts["rate_limits"] = con.execute(
+        "DELETE FROM control.rate_limits WHERE window_start < now() - interval '1 day' "
+        "AND (locked_until IS NULL OR locked_until < now())"
+    ).rowcount
+    counts["auth_events"] = con.execute(
+        "DELETE FROM control.auth_events WHERE at < now() - make_interval(days => %s)",
+        (keep_events_days,),
+    ).rowcount
+    return counts

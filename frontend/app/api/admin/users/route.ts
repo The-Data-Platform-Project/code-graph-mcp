@@ -1,12 +1,10 @@
 import { listUsers } from "@/lib/accounts";
-import { canAdminister } from "@/lib/access";
-import { json, withViewer } from "@/lib/handler";
+import { json, withAdmin } from "@/lib/handler";
 
 export const dynamic = "force-dynamic";
 
 /** Everyone who has signed in with GitHub, pending first. Platform admins only. */
-export const GET = withViewer(async (viewer) => {
-  if (!canAdminister(viewer)) return json({ error: "not found" }, 404);
+export const GET = withAdmin(async () => {
   const users = await listUsers();
   return json({
     users: users.map((u) => ({

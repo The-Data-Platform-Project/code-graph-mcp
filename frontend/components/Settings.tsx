@@ -69,7 +69,19 @@ type Props = {
   tenantName: string;
   githubLogin: string | null;
   canManage: boolean;
+  /** Decided on the server (canAdminister); only says whether to show admin UI. */
   isAdmin: boolean;
+  /** A platform admin whose session has no second factor yet. */
+  adminNeedsMfa: boolean;
+};
+
+type MfaInfo = {
+  enabled: boolean;
+  enrolling?: boolean;
+  backupCodesLeft?: number;
+  required: boolean;
+  sessionVerified: boolean;
+  managedByEnvironment?: boolean;
 };
 
 async function api<T>(url: string, init?: RequestInit & { json?: unknown }): Promise<T> {
@@ -123,7 +135,7 @@ function StatusBadge({ job }: { job: Job | null }) {
   return <span className={`badge badge-${job.status}`}>{label}</span>;
 }
 
-export default function Settings({ tenantName, githubLogin, canManage, isAdmin }: Props) {
+export default function Settings({ tenantName, githubLogin, canManage, isAdmin, adminNeedsMfa }: Props) {
   const [tokens, setTokens] = useState<Token[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -217,6 +229,14 @@ export default function Settings({ tenantName, githubLogin, canManage, isAdmin }
           </p>
         )}
 
+        {adminNeedsMfa && (
+          <p className="settings-notice error" role="status">
+            Administrator features are locked until you turn on two-factor authentication below.
+          </p>
+        )}
+
+        <SecuritySection say={say} />
+
         <TokensSection
           tokens={tokens}
           githubLogin={githubLogin}
@@ -244,6 +264,195 @@ export default function Settings({ tenantName, githubLogin, canManage, isAdmin }
 }
 
 type Run = (key: string, fn: () => Promise<string | void>) => Promise<void>;
+
+// ── Security: two-factor authentication and sessions ────────────────────────
+
+function BackupCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
+  return (
+    <div className="settings-step">
+      <h3>Save your backup codes</h3>
+      <p className="settings-help">
+        Each code signs you in once if you lose your phone. They are shown only now: store them in
+        a password manager.
+      </p>
+      <pre className="settings-codes mono">{codes.join("\n")}</pre>
+      <div className="settings-inline">
+        <button
+          type="button"
+          className="settings-button"
+          onClick={() => void navigator.clipboard?.writeText(codes.join("\n")).catch(() => {})}
+        >
+          Copy
+        </button>
+        <button type="button" className="settings-button primary" onClick={onDone}>
+          I have saved them
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SecuritySection({ say }: { say: (kind: "ok" | "error", text: string) => void }) {
+  const [info, setInfo] = useState<MfaInfo | null>(null);
+  const [setup, setSetup] = useState<{ secret: string; qrSvg: string } | null>(null);
+  const [codes, setCodes] = useState<string[] | null>(null);
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      setInfo(await api<MfaInfo>("/api/auth/mfa"));
+    } catch (err) {
+      say("error", err instanceof Error ? err.message : String(err));
+    }
+  }, [say]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function act(fn: () => Promise<void>) {
+    setBusy(true);
+    try {
+      await fn();
+    } catch (err) {
+      say("error", err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+      setCode("");
+      await load();
+    }
+  }
+
+  const codeInput = (
+    <input
+      id="mfa-code"
+      className="mono"
+      inputMode="text"
+      autoComplete="one-time-code"
+      placeholder="6-digit code"
+      maxLength={32}
+      value={code}
+      onChange={(e) => setCode(e.target.value)}
+    />
+  );
+
+  return (
+    <section className="settings-card" id="security">
+      <h2>Security</h2>
+      {!info ? (
+        <p className="settings-empty">Loading…</p>
+      ) : info.managedByEnvironment ? (
+        <p className="settings-help">
+          This is the owner password login. Its second factor is the authenticator set up from
+          <code> OWNER_TOTP_SECRET</code>; change it in the deployment&apos;s environment.
+        </p>
+      ) : (
+        <>
+          <p className="settings-help">
+            Two-factor authentication asks for a code from an authenticator app (1Password, Google
+            Authenticator, Authy…) each time you sign in.
+            {info.required && " It is required for administrators."}
+          </p>
+          <p>
+            <span className={`badge ${info.enabled ? "badge-succeeded" : "badge-failed"}`}>
+              {info.enabled ? "2FA on" : "2FA off"}
+            </span>
+            {info.enabled && (
+              <span className="muted"> · {info.backupCodesLeft} backup codes left</span>
+            )}
+          </p>
+
+          {codes && <BackupCodes codes={codes} onDone={() => setCodes(null)} />}
+
+          {!info.enabled && !setup && (
+            <button
+              className="settings-button primary"
+              disabled={busy}
+              onClick={() => act(async () => {
+                setSetup(await api<{ secret: string; qrSvg: string }>("/api/auth/mfa/enroll", { method: "POST" }));
+              })}
+            >
+              Turn on two-factor authentication
+            </button>
+          )}
+
+          {!info.enabled && setup && (
+            <form
+              className="settings-step"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void act(async () => {
+                  const r = await api<{ backupCodes: string[] }>("/api/auth/mfa/confirm", { method: "POST", json: { code } });
+                  setSetup(null);
+                  setCodes(r.backupCodes);
+                  say("ok", "Two-factor authentication is on.");
+                });
+              }}
+            >
+              <h3>Scan this with your authenticator app</h3>
+              <img
+                className="settings-qr"
+                alt="QR code for your authenticator app"
+                src={`data:image/svg+xml;utf8,${encodeURIComponent(setup.qrSvg)}`}
+              />
+              <p className="settings-help">
+                Or enter this key by hand: <code className="mono">{setup.secret.match(/.{1,4}/g)?.join(" ")}</code>
+              </p>
+              <label className="settings-grid">Then enter the code it shows{codeInput}</label>
+              <button className="settings-button primary" disabled={busy || code.trim().length < 6} type="submit">
+                Confirm
+              </button>
+            </form>
+          )}
+
+          {info.enabled && (
+            <div className="settings-step">
+              <label className="settings-grid">Current code, for the actions below{codeInput}</label>
+              <div className="settings-inline">
+                <button
+                  className="settings-button"
+                  disabled={busy || code.trim().length < 6}
+                  onClick={() => act(async () => {
+                    const r = await api<{ backupCodes: string[] }>("/api/auth/mfa/backup-codes", { method: "POST", json: { code } });
+                    setCodes(r.backupCodes);
+                  })}
+                >
+                  New backup codes
+                </button>
+                {!info.required && (
+                  <button
+                    className="settings-button"
+                    disabled={busy || code.trim().length < 6}
+                    onClick={() => act(async () => {
+                      await api("/api/auth/mfa/disable", { method: "POST", json: { code } });
+                      say("ok", "Two-factor authentication is off. Other sessions were signed out.");
+                    })}
+                  >
+                    Turn off 2FA
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      <div className="settings-inline">
+        <button
+          className="settings-button"
+          disabled={busy}
+          onClick={() => act(async () => {
+            const r = await api<{ revoked: number }>("/api/auth/sessions", { method: "DELETE" });
+            say("ok", `Signed out ${r.revoked} other session${r.revoked === 1 ? "" : "s"}.`);
+          })}
+        >
+          Sign out everywhere else
+        </button>
+      </div>
+    </section>
+  );
+}
 
 // ── GitHub tokens ───────────────────────────────────────────────────────────
 
@@ -681,10 +890,16 @@ function JobsSection({ jobs }: { jobs: Job[] }) {
 // ── Sign-ups (platform admins) ──────────────────────────────────────────────
 
 function UsersSection({ users, busy, run }: { users: User[]; busy: string | null; run: Run }) {
-  const act = (u: User, action: "approve" | "suspend" | "reactivate") =>
+  const done: Record<string, string> = {
+    approve: "approved, with their own graph",
+    suspend: "suspended and signed out",
+    reactivate: "reactivated",
+    reset_mfa: "2FA reset and signed out; they set it up again at next sign-in",
+  };
+  const act = (u: User, action: "approve" | "suspend" | "reactivate" | "reset_mfa") =>
     run(`user-${u.id}`, async () => {
       await api(`/api/admin/users/${u.id}`, { method: "POST", json: { action } });
-      return `${u.githubLogin}: ${action === "approve" ? "approved, with their own graph" : action + "d"}.`;
+      return `${u.githubLogin}: ${done[action]}.`;
     });
   return (
     <section className="settings-card">
@@ -716,6 +931,9 @@ function UsersSection({ users, busy, run }: { users: User[]; busy: string | null
                 )}
                 {u.status === "suspended" && (
                   <button disabled={busy !== null} onClick={() => void act(u, "reactivate")}>Reactivate</button>
+                )}
+                {u.status === "active" && (
+                  <button disabled={busy !== null} onClick={() => void act(u, "reset_mfa")}>Reset 2FA</button>
                 )}
               </div>
             </li>

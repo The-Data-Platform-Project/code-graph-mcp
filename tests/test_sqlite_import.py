@@ -81,6 +81,7 @@ def test_load_creates_the_control_plane(fresh_db, sqlite_graph):
     assert tables == {
         "tenants", "mcp_tokens", "repo_connections",
         "users", "members", "github_tokens", "index_jobs",
+        "sessions", "user_mfa", "mfa_backup_codes", "mfa_replay", "rate_limits", "auth_events",
     }
 
 

@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
+import Script from "next/script";
 import { Mark } from "@/components/brand/Logo";
+import { clientIp, ipHash } from "@/lib/authlog";
+import { captchaConfigured, turnstileSiteKey } from "@/lib/captcha";
 import { githubOAuth } from "@/lib/env";
+import { CAPTCHA_AFTER, failureState } from "@/lib/ratelimit";
 
 export const dynamic = "force-dynamic";
 
@@ -12,8 +17,39 @@ const ERRORS: Record<string, string> = {
   github_state: "That sign-in link expired or came from another browser. Try again.",
   github_exchange: "GitHub did not confirm the sign-in. Try again.",
   suspended: "This account is suspended. Ask the administrator.",
+  expired: "That sign-in took too long. Start again.",
+  captcha: "Please complete the check below, then try again.",
   "1": "That password is not right.",
 };
+
+function waitText(seconds: number): string {
+  if (seconds <= 60) return `${Math.max(1, seconds)} seconds`;
+  const minutes = Math.ceil(seconds / 60);
+  return minutes < 90 ? `${minutes} minutes` : `${Math.ceil(minutes / 60)} hours`;
+}
+
+function errorText(error: string, retry: number): string {
+  if (error === "rate") return `Too many sign-in attempts from your network. Try again in ${waitText(retry)}.`;
+  if (error === "locked") {
+    return `Sign-in is paused after repeated failures. Try again in ${waitText(retry)}.`;
+  }
+  return ERRORS[error] ?? ERRORS["1"];
+}
+
+/** Show the CAPTCHA once this IP or the owner account has 3+ recent failures. */
+async function captchaRequired(): Promise<boolean> {
+  try {
+    const ip = ipHash(clientIp(await headers()));
+    const [byIp, byAccount] = await Promise.all([
+      failureState(`login:ip:${ip}`),
+      failureState("login:acct:owner"),
+    ]);
+    // Same rule as the login route (CAPTCHA is only shown when configured).
+    return Math.max(byIp.failures, byAccount.failures) >= CAPTCHA_AFTER;
+  } catch {
+    return false;
+  }
+}
 
 function GithubIcon() {
   return (
@@ -26,9 +62,10 @@ function GithubIcon() {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; next?: string; status?: string; who?: string }>;
+  searchParams: Promise<{ error?: string; next?: string; status?: string; who?: string; retry?: string }>;
 }) {
-  const { error, next, status, who } = await searchParams;
+  const { error, next, status, who, retry } = await searchParams;
+  const showCaptcha = captchaConfigured() && (await captchaRequired());
   const github = githubOAuth() !== null;
   const githubHref = `/api/auth/github${next ? `?next=${encodeURIComponent(next)}` : ""}`;
   return (
@@ -47,7 +84,7 @@ export default async function LoginPage({
             administrator approves it, sign in again here.
           </p>
         ) : error ? (
-          <p className="login-error">{ERRORS[error] ?? ERRORS["1"]}</p>
+          <p className="login-error" role="alert">{errorText(error, Number(retry) || 0)}</p>
         ) : null}
 
         {github && (
@@ -69,11 +106,17 @@ export default async function LoginPage({
             autoComplete="current-password" autoFocus={!github} required
           />
           {next && <input type="hidden" name="next" value={next} />}
+          {showCaptcha && (
+            <>
+              <Script src="https://challenges.cloudflare.com/turnstile/v0/api.js" strategy="afterInteractive" />
+              <div className="cf-turnstile" data-sitekey={turnstileSiteKey()} />
+            </>
+          )}
           <button type="submit" className="readme-btn login-submit">Sign in</button>
         </form>
         <p className="login-note">
           {github
-            ? "The owner password is the administrator's break-glass sign-in."
+            ? "The owner password is the administrator's break-glass sign-in. It also asks for an authenticator code."
             : "Single-owner access. Sign-in with GitHub appears here once it is configured."}{" "}
           <a href="/">Back to the site</a>
         </p>
