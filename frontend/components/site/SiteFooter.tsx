@@ -22,7 +22,7 @@ export default function SiteFooter() {
         <div className="footer-grid">
           <div className="footer-brand">
             <Logo id="ftr" size={28} />
-            <p>{SITE.name} — {SITE.tagline}</p>
+            <p>{SITE.name}: {SITE.tagline}</p>
           </div>
           {FOOTER_GROUPS.map((g) => (
             <div className="footer-col" key={g.title}>
