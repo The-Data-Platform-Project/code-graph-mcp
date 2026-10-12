@@ -14,7 +14,7 @@ steps here and a line to the [build log](#build-log).
 ## Contents
 
 1. [What you are deploying](#1-what-you-are-deploying)
-2. [One-time setup](#2-one-time-setup): Supabase, loading the graph, the app role, Vercel, Claude Code
+2. [One-time setup](#2-one-time-setup): Supabase, loading the graph, the app role, Vercel, Claude Code, sign-in with GitHub, the cloud indexer
 3. [Day-to-day operations](#3-day-to-day-operations)
 4. [Switches](#4-switches)
 5. [Running it locally](#5-running-it-locally)
@@ -28,13 +28,15 @@ steps here and a line to the [build log](#build-log).
 
 | Piece | Where | What it does |
 |---|---|---|
-| Graph database | Supabase `rryfmnktebyvfxaftvyv` (Singapore, `ap-southeast-1`) | `control` schema (tenants, tokens, repo connections) and `tenant_owner` (your graph) |
-| App | Vercel, root directory `frontend/`, region `sin1` | the graph page at `/`, and the MCP endpoint at `/api/mcp` |
+| Graph database | Supabase `rryfmnktebyvfxaftvyv` (Singapore, `ap-southeast-1`) | `control` schema (tenants, users, MCP tokens, GitHub tokens, repo connections, index jobs) and one `tenant_<slug>` graph per tenant |
+| App | Vercel, root directory `frontend/`, region `sin1` | the graph page at `/graph`, `/settings`, and the MCP endpoint at `/api/mcp` |
+| Indexer | AWS Lambda, `ap-southeast-1` ([INDEXER_AWS.md](INDEXER_AWS.md)) | re-indexes connected GitHub repositories daily, on push and on demand |
 | Source text | GitHub | read per request for README, file and snippet previews; never stored |
 | Claude Code | your machine | connects to `https://<app>/api/mcp` with a token |
 
-Nothing in this setup needs your desktop to be on. No indexing happens in the
-cloud yet: the graph is the one you already built, loaded from SQLite.
+Nothing in this setup needs your desktop to be on. With the indexer deployed
+(§2.8), graphs are built in the cloud from GitHub; without it, the graph is
+the one you loaded from SQLite.
 
 ---
 
@@ -89,26 +91,36 @@ $PY scripts/load_sqlite_to_supabase.py \
 - The old empty graph tables in Supabase's `public` schema are unused. You can
   leave them or drop them.
 
-### 2.2 Create a read-only role for the app
+### 2.2 Create a restricted role for the app
 
-The app only reads the graph, apart from recording when a token was last
-used. Give it a role that can do exactly that, rather than the `postgres`
-password. In the Supabase dashboard, open **SQL Editor** and run:
+The app reads graphs and writes only the control-plane rows people change on
+`/settings`: their account, GitHub tokens, repo connections and index jobs. Give
+it a role that can do exactly that, rather than the `postgres` password. In the
+Supabase dashboard, open **SQL Editor** and run:
 
 ```sql
 CREATE ROLE codegraph_app LOGIN PASSWORD '<a long random password>';
-GRANT USAGE ON SCHEMA control TO codegraph_app;
-GRANT SELECT ON ALL TABLES IN SCHEMA control TO codegraph_app;
-GRANT UPDATE (last_used_at) ON control.mcp_tokens TO codegraph_app;
-GRANT USAGE ON SCHEMA tenant_owner TO codegraph_app;
-GRANT SELECT ON ALL TABLES IN SCHEMA tenant_owner TO codegraph_app;
 ```
 
+Then create or upgrade the control schema and apply the role's grants (as
+`postgres`; re-run after any change to `src/code_graph/control.py`, it is
+idempotent):
+
+```bash
+$PY scripts/migrate_control.py --app-role codegraph_app
+```
+
+What it grants: read on `control`; insert, update and delete on `users`,
+`members`, `github_tokens`, `repo_connections` and `index_jobs`; `last_used_at`
+on `mcp_tokens`; read on every existing tenant schema; and execute on
+`control.provision_tenant`. That function (SECURITY DEFINER) is the only way
+the app can create a schema: approving a sign-up calls it, and it grants the
+app read access to the new graph. The app cannot run DDL or write any graph.
+`tests/test_control_plane.py` runs under exactly this grant set.
+
 Through the pooler, its username is `codegraph_app.rryfmnktebyvfxaftvyv`.
-This grant set was tested: the app works fully under it; writes and other
-tenants' schemas are refused. Re-run the last two lines for any new tenant
-schema. `--replace` loads keep the grants, because they truncate tables
-rather than dropping them.
+`--replace` loads keep the grants, because they truncate tables rather than
+dropping them.
 
 ### 2.3 Get Supabase's CA certificate
 
@@ -122,15 +134,47 @@ around this by turning verification off.
 
 ```bash
 openssl rand -hex 32     # SESSION_SECRET
+openssl rand -hex 32     # MFA_ENCRYPTION_KEY: seals users' authenticator secrets
 ```
 
-Choose an `OWNER_PASSWORD` of at least 12 characters. That is what you type on
-the login page.
+Choose `OWNER_PASSWORD` with the checker, which shows a live strength meter
+and gives the verdict the server enforces (12+ characters, upper, lower, digit
+and symbol, not in the 10,000 most common passwords, zxcvbn score 3 or more,
+not in Have I Been Pwned). The server refuses every owner login while the
+configured password fails that policy:
 
-For source previews of private repos, create a **fine-grained GitHub token**
-with read-only *Contents* access to just those repos. That is `GITHUB_TOKEN`.
-Even for public repos, set one: unauthenticated GitHub allows 60 requests an
-hour.
+```bash
+cd frontend && node --experimental-strip-types scripts/check-password.mts
+```
+
+The owner login also needs an authenticator code. Create its secret and scan
+the QR code it prints into your authenticator app; the value is
+`OWNER_TOTP_SECRET`:
+
+```bash
+cd frontend && node --experimental-strip-types scripts/owner-totp.mts
+```
+
+Optional but recommended: a free [Cloudflare Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile)
+widget (`TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`), shown after 3 failed
+owner sign-ins.
+
+For source previews of repos connected without a token of their own (such as
+the ones the loader created), create a **fine-grained GitHub token** with
+read-only *Contents* access to just those repos. That is `GITHUB_TOKEN`. Even
+for public repos, set one: unauthenticated GitHub allows 60 requests an hour.
+Repos connected on `/settings` use the token chosen there instead. Only the
+owner tenant falls back to `GITHUB_TOKEN`; other tenants' connections without
+a token of their own read public repositories only.
+
+For sign-in with GitHub and the cloud indexer (§2.7, §2.8):
+
+```bash
+openssl rand -hex 32     # GITHUB_TOKEN_KEY: encrypts stored GitHub tokens
+openssl rand -hex 32     # INDEXER_SECRET: signs index requests, derives webhook secrets
+```
+
+Both also go into the indexer's SSM parameters and must match there.
 
 ### 2.5 Configure Vercel
 
@@ -147,10 +191,19 @@ is wrong. In **Settings → Build and Deployment**, set **Root Directory =
 | `DATABASE_CA_CERT` | the full PEM from 2.3, including the BEGIN/END lines |
 | `PGPOOL_MAX` | `1` |
 | `OWNER_PASSWORD` | from 2.4 |
+| `OWNER_TOTP_SECRET` | from 2.4 |
 | `SESSION_SECRET` | from 2.4 |
+| `MFA_ENCRYPTION_KEY` | from 2.4 |
+| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | optional, from 2.4 |
 | `SOURCE_PROVIDER` | `github` |
 | `GITHUB_TOKEN` | from 2.4 |
 | `MCP_BACKEND` | `native` |
+| `GITHUB_TOKEN_KEY` | from 2.4 (needed for `/settings`) |
+| `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` | from 2.7 |
+| `OWNER_GITHUB_LOGIN` | your GitHub login (2.7) |
+| `OWNER_GITHUB_ID` | your numeric GitHub id (2.7); takes precedence over the login |
+| `PUBLIC_APP_URL` | `https://<app>`, the origin GitHub redirects back to |
+| `INDEXER_URL` / `INDEXER_SECRET` | from 2.8 |
 
 Store `DATABASE_URL` with `tests/diagnostics/set_vercel_db_url.py` rather
 than at `vercel env add`'s hidden prompt. It tests the login first and stores
@@ -198,6 +251,53 @@ back to the local container, set `CODE_GRAPH_MCP_URL` to
 To use it outside this project, add the same block from `.mcp.json` to your
 user-level Claude Code config.
 
+### 2.7 Sign-in with GitHub
+
+People sign up with their GitHub account; you approve them; each approved
+person gets their own graph (`tenant_gh_<github id>`).
+
+1. GitHub → **Settings → Developer settings → OAuth Apps → New OAuth App**.
+   Homepage `https://<app>`, callback URL
+   `https://<app>/api/auth/github/callback`. Generate a client secret.
+2. On Vercel set `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`,
+   `PUBLIC_APP_URL=https://<app>`, `OWNER_GITHUB_LOGIN=<your login>` and
+   `OWNER_GITHUB_ID=<your numeric id>` (from `https://api.github.com/users/<login>`), then
+   redeploy. The login page now offers **Continue with GitHub**.
+3. Sign in with GitHub yourself. Your login lands in the existing `owner`
+   tenant as a platform admin, with no approval step.
+4. Once that works, unset `OWNER_PASSWORD` if you want GitHub to be the only
+   way in. Keep it if you want a break-glass sign-in.
+
+The consent screen asks only for `read:user user:email`: who the person is.
+The OAuth token is used once to read that and then discarded. Repository
+access comes from the fine-grained tokens people add on `/settings`, each
+limited by GitHub to the repositories they pick. Those tokens are stored
+AES-256-GCM-encrypted under `GITHUB_TOKEN_KEY`, bound to their tenant, and must
+belong to the GitHub account that adds them.
+
+**Approving people:** `/settings` → **People** lists every sign-in, pending
+first. **Approve** provisions their graph; **Suspend** cuts off their next
+web request (the session is re-checked on every request). MCP tokens belong to
+the tenant, so also revoke theirs: `$PY scripts/mcp_token.py list --tenant gh_<id>`, then `revoke`.
+
+**Sign-in security**, enforced on the server (`frontend/lib/authpolicy.ts`):
+
+| Surface | Limits |
+|---|---|
+| Owner password | 5 attempts per IP per 15 min; CAPTCHA after 3 failures; exponential backoff (2 s, 4 s, ... up to 15 min); account lockout after 10 failures (15 min, doubling each time it recurs) |
+| 2FA codes (sign-in, setup, disable, new backup codes) | 5 per session and 10 per IP per 15 min; backoff after 3 failures; lockout after 5 |
+| GitHub sign-in start and callback | 10 per IP per 15 min each |
+| MCP bearer tokens | backoff after 3 failures per IP, lockout after 20 |
+
+- Sessions live in `control.sessions`; the cookie (httpOnly, Secure, SameSite=Strict) only names one. Signing out ends it on the server.
+- 2FA is mandatory for administrators: a platform admin without it can use the app but not `/admin` or the People list until they turn it on in `/settings` → Security. The owner password login always asks for a code.
+- Every failure, lockout and CAPTCHA refusal is in `control.auth_events`, which the app role can append to but not change. The indexer's daily run prunes events older than 90 days, expired sessions and idle counters.
+
+### 2.8 The cloud indexer
+
+Indexes connected repositories from GitHub on AWS (free tier), deployed by
+GitHub Actions. Setup, costs and operations: [INDEXER_AWS.md](INDEXER_AWS.md).
+
 ---
 
 ## 3. Day-to-day operations
@@ -213,9 +313,17 @@ read-only app role.
 | Replace a lost token | revoke it, create a new one. Tokens cannot be recovered. |
 | Reload the graph | re-run the loader with `--replace` (and the same `--github` flags) |
 | Change a repo's GitHub mapping or ref | SQL below |
-| Log everyone out | change `SESSION_SECRET` and redeploy |
-| Change the login password | change `OWNER_PASSWORD` and redeploy |
+| Log everyone out | `UPDATE control.sessions SET revoked_at = now() WHERE revoked_at IS NULL;` (or change `SESSION_SECRET` and redeploy) |
+| Log one person out | `/settings` → People → Suspend, or `UPDATE control.sessions SET revoked_at = now() WHERE sub = 'user:<id>';` |
+| Change the login password | check it with `scripts/check-password.mts`, change `OWNER_PASSWORD`, redeploy |
+| Replace the owner's authenticator | `scripts/owner-totp.mts`, change `OWNER_TOTP_SECRET`, redeploy |
+| Someone lost their phone and backup codes | `/settings` → People → Reset 2FA |
+| See failed sign-ins and lockouts | `SELECT at, kind, outcome, subject, detail FROM control.auth_events ORDER BY at DESC LIMIT 50;` |
+| Lift a lockout early | `DELETE FROM control.rate_limits WHERE key LIKE 'fail:%';` |
 | Check both MCP backends agree | [§4 parity check](#parity-check) |
+| Approve or suspend a person | `/settings` → People |
+| See index runs and failures | `/settings` → Recent index runs (per tenant), or `control.index_jobs` |
+| Upgrade the control schema | `$PY scripts/migrate_control.py --app-role codegraph_app` (or the deploy workflow's `MIGRATE_DATABASE_URL`) |
 
 Changing a repo mapping without a reload:
 
@@ -243,7 +351,9 @@ Everything that can be switched is an environment variable on the app.
 | `SOURCE_PROVIDER` | `github` (cloud default) | previews read GitHub via `control.repo_connections` |
 | | `mcp` | previews read the Python container's `/api/file` and `/api/readme` (`MCP_BASE_URL`, `CODE_GRAPH_TOKEN`); for local/tunnel setups |
 | | `none` | previews off; the graph still works |
-| `OWNER_TENANT_SLUG` | default `owner` | which tenant the login page opens |
+| `OWNER_TENANT_SLUG` | default `owner` | which tenant the owner password and `OWNER_GITHUB_LOGIN` open |
+| `GITHUB_OAUTH_CLIENT_ID` / `_SECRET` | unset | no "Continue with GitHub"; owner password only |
+| `INDEXER_URL` | unset | no cloud indexer: connections are recorded but not indexed |
 | `PGPOOL_MAX` | `1` on Vercel | connections per function instance |
 
 ### Parity check
@@ -362,3 +472,5 @@ read-only role.
 | 2026-09-25 | this commit | FUTURE_STATE.md, this guide, switchable `.mcp.json` |
 | 2026-09-26 | `99d65da` | moved to Supabase `rryfmnktebyvfxaftvyv` (`ap-southeast-1`); Vercel functions in `sin1`; loader `--exclude` |
 | 2026-09-28 | `7a21111` | `tests/diagnostics/`; production live on `code-graph-viz.vercel.app`, tracking this branch |
+| 2026-10-04 | `feature/graph-etl` | sign-in with GitHub and approvals; fine-grained GitHub tokens and repo connections on `/settings`; cloud indexer on AWS Lambda (daily, on push, on demand) deployed by GitHub Actions; CI workflow |
+| 2026-10-12 | `feature/graph-etl` | auth hardening: server-side sessions (SameSite=Strict, revocable), TOTP 2FA with backup codes (mandatory for admins and the owner login), rate limiting, backoff, lockout, CAPTCHA, auth event log, owner password policy (zxcvbn, top-10k, HIBP), CSRF Origin checks, security headers |

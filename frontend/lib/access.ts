@@ -3,15 +3,30 @@ import { notFound, redirect } from "next/navigation";
 import { getViewer, type Viewer } from "./viewer";
 
 /**
- * Who may read administrative pages.
+ * Who may read administrative pages and approve sign-ups.
  *
- * Today there is one account, the owner, so administration is the owner role.
- * When sign-in with Google/GitHub lands, platform-admin rights become their
- * own flag (control.users.is_platform_admin in docs/FUTURE_STATE.md); this is
- * the one function that changes, and every admin page already calls it.
+ * Platform administration is its own flag (control.users.is_platform_admin),
+ * separate from tenant roles: every approved user owns their own tenant, and
+ * that must not make them an administrator of the platform. The owner password
+ * login is a platform admin.
+ *
+ * Admin powers also require that THIS session passed a second factor: a
+ * platform admin signed in without 2FA (not yet enrolled) is an ordinary user
+ * until they enrol and verify. Every admin page and admin API route calls
+ * this on the server; the browser is only ever told whether to show a link.
  */
 export function canAdminister(viewer: Viewer): boolean {
-  return viewer.role === "owner";
+  return viewer.isPlatformAdmin && viewer.mfaVerified;
+}
+
+/** A platform admin who still has to set up 2FA before admin powers unlock. */
+export function adminNeedsMfa(viewer: Viewer): boolean {
+  return viewer.isPlatformAdmin && !viewer.mfaVerified;
+}
+
+/** Who may change a tenant's GitHub tokens and repo connections. */
+export function canManageTenant(viewer: Viewer): boolean {
+  return viewer.role === "owner" || viewer.role === "admin";
 }
 
 /**
@@ -25,6 +40,7 @@ export function canAdminister(viewer: Viewer): boolean {
 export async function requireAdmin(returnTo: string): Promise<Viewer> {
   const viewer = await getViewer();
   if (!viewer) redirect(`/login?next=${encodeURIComponent(returnTo)}`);
+  if (adminNeedsMfa(viewer)) redirect("/settings?mfa=required#security");
   if (!canAdminister(viewer)) notFound();
   return viewer;
 }

@@ -1,6 +1,6 @@
-ContextForge serves its graph over MCP (Model Context Protocol), so a coding agent can ask structural questions directly: who calls this, what does it call, what does this file import. Each answer is one tool call with a short, structured result, instead of a search followed by reading whole files.
+CodeGraph serves its graph over MCP (Model Context Protocol), so a coding agent can ask structural questions directly: who calls this, what does it call, what does this file import. Each answer is one tool call with a short, structured result, instead of a search followed by reading whole files.
 
-All the examples on this page are real tool calls against the ContextForge repository, trimmed for length.
+All the examples on this page are real tool calls against the CodeGraph repository, trimmed for length.
 
 ## Endpoints
 
@@ -45,7 +45,7 @@ Since both targets use the same two variables, Claude Code talks to one graph at
 
 ### Other MCP clients
 
-Any client that supports streamable HTTP and a custom `Authorization` header should work with the same URL and token. That said, Claude Code is the only client I've actually tested ContextForge with, so I can't really vouch for the others yet.
+Any client that supports streamable HTTP and a custom `Authorization` header should work with the same URL and token. That said, Claude Code is the only client I've actually tested CodeGraph with, so I can't really vouch for the others yet.
 
 ## Workflows
 
@@ -154,7 +154,7 @@ I'd recommend telling your agent to start with the graph. Put a line in the proj
 
 Scope your calls with `repo` whenever more than one repository is indexed, since the same qualified name can exist in several of them.
 
-When you're self-hosted, re-index after changes with `reindex_repository`. Answers reflect the last index, not your working tree.
+When you're self-hosted, re-index after changes with `reindex_repository`. Hosted graphs with the cloud indexer refresh daily and on every push. Either way, answers reflect the last index, not your working tree.
 
 And unresolved isn't an error. It just means the call leaves the repository, or its target is ambiguous.
 

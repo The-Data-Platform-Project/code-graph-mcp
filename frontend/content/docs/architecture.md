@@ -1,6 +1,6 @@
 ## Overview
 
-ContextForge has three parts. An indexer parses repositories into a graph, a Postgres database holds that graph (structure only), and two front doors read it: the graph explorer, which is a Next.js web app, and an MCP server for agents.
+CodeGraph has three parts. An indexer parses repositories into a graph, a Postgres database holds that graph (structure only), and two front doors read it: the graph explorer, which is a Next.js web app, and an MCP server for agents.
 
 ```text
   repository files ──► indexer ──► Postgres graph ──┬──► MCP server  ──► AI agent

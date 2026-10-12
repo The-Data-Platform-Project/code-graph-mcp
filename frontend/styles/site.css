@@ -1,5 +1,5 @@
 /*
- * ContextForge site and docs.
+ * CodeGraph site and docs.
  *
  * Every rule is scoped under .cf (the wrapper in app/(site)/layout.tsx), so this
  * sheet cannot restyle the graph explorer even if both were ever on one page.

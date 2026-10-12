@@ -1,5 +1,5 @@
 /**
- * The ContextForge mark: a "C" drawn as a small graph, traced from the brand
+ * The CodeGraph mark: a "C" drawn as a small graph, traced from the brand
  * sheet. Vector, so the same drawing serves the header, the favicon and the
  * social card. Pass a distinct `id` when the mark appears more than once on a
  * page, so each copy's gradients resolve even if another copy is hidden.
@@ -106,7 +106,7 @@ export function Logo({ id = "cf-logo", size = 30 }: { id?: string; size?: number
     <span className="cf-logo">
       <Mark id={id} size={size} />
       <span className="cf-wordmark">
-        Context<span>Forge</span>
+        Code<span>Graph</span>
       </span>
     </span>
   );

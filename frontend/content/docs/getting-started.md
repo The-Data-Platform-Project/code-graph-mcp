@@ -1,15 +1,15 @@
-This guide gets ContextForge running on your own machine with Docker, indexes one repository, and opens it in the graph explorer and in Claude Code. It takes about fifteen minutes, and most of that is the first image build.
+This guide gets CodeGraph running on your own machine with Docker, indexes one repository, and opens it in the graph explorer and in Claude Code. It takes about fifteen minutes, and most of that is the first image build.
 
-## Two ways ContextForge runs
+## Two ways CodeGraph runs
 
 | | Self-hosted (this guide) | Hosted |
 |---|---|---|
 | What runs | Postgres, the MCP server (indexer and tools), and the web app, in Docker Compose | The web app on Vercel, reading a graph in Supabase |
-| Indexing | Yes, with the `index_repository` and `reindex_repository` MCP tools | No. It serves graphs that were indexed in a self-hosted stack and loaded by an administrator. |
+| Indexing | Yes, with the `index_repository` and `reindex_repository` MCP tools | Yes, where the cloud indexer is deployed: connected GitHub repositories are indexed daily, on every push, and on demand from **Settings** |
 | Where source comes from | Your disk, mounted read-only | GitHub, fetched on request for previews |
-| Who can use it | You, on `127.0.0.1` | The owner, after signing in |
+| Who can use it | You, on `127.0.0.1` | The owner, and people the owner approves after they sign in with GitHub |
 
-Right now self-hosting is the only way to index a repository. Signing in, connecting GitHub and indexing in the cloud are on the [roadmap](/roadmap), not built yet.
+This guide covers self-hosting. For the hosted app, see [connecting GitHub repositories](/docs/user-guide#connecting-github-repositories-hosted) in the user guide.
 
 ## Prerequisites
 
@@ -120,7 +120,7 @@ Ask Claude Code to call the tool, or call it yourself. `path` is relative to `RE
 index_repository(name="my-service", path="my-service")
 ```
 
-You get back a summary of what was indexed. This one is a real run over the ContextForge repository itself:
+You get back a summary of what was indexed. This one is a real run over the CodeGraph repository itself:
 
 ```json
 { "repo": "code-graph-mcp", "status": "indexed", "files_indexed": 120, "files_skipped": 1, "files_deleted": 0, "nodes": 635, "edges": 3663 }
@@ -148,8 +148,8 @@ reindex_repository(name="my-service")
 { "repo": "code-graph-mcp", "status": "reindexed", "files_indexed": 46, "files_skipped": 1, "files_deleted": 2, "nodes": 589, "edges": 3505 }
 ```
 
-That example is a real re-index of the ContextForge repository too. Re-indexing is on demand, nothing watches your files, so run it after you pull or edit.
+That example is a real re-index of the CodeGraph repository too. Re-indexing is on demand, nothing watches your files, so run it after you pull or edit.
 
 ## Next steps
 
-The [user guide](/docs/user-guide) covers everything ContextForge does end to end, [working with AI agents](/docs/agents) has real example workflows in Claude Code, and if a step above failed, [troubleshooting](/docs/troubleshooting) is the place to look.
+The [user guide](/docs/user-guide) covers everything CodeGraph does end to end, [working with AI agents](/docs/agents) has real example workflows in Claude Code, and if a step above failed, [troubleshooting](/docs/troubleshooting) is the place to look.

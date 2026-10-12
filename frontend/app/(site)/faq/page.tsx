@@ -3,7 +3,7 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "FAQ",
-  description: "Common questions about ContextForge: what it is, how to use it, and how it handles your code.",
+  description: "Common questions about CodeGraph: what it is, how to use it, and how it handles your code.",
   alternates: { canonical: "/faq" },
 };
 
@@ -15,15 +15,15 @@ const A = ({ href, children }: { href: string; children: React.ReactNode }) => (
 
 const SECTIONS: { title: string; items: QA[] }[] = [
   {
-    title: "About ContextForge",
+    title: "About CodeGraph",
     items: [
       {
-        q: "What is ContextForge?",
+        q: "What is CodeGraph?",
         a: <p>A code knowledge graph. It parses repositories into files, symbols and the relationships between them, stores that structure in Postgres, and serves it to people through a visual explorer and to AI agents through MCP.</p>,
       },
       {
         q: "Is it an AI chatbot for my code?",
-        a: <p>No. ContextForge has no model and no chat. It answers structured questions like who calls this or what this file imports, and your agent does the reasoning with those answers.</p>,
+        a: <p>No. CodeGraph has no model and no chat. It answers structured questions like who calls this or what this file imports, and your agent does the reasoning with those answers.</p>,
       },
       {
         q: "How is it different from searching the code?",
@@ -35,7 +35,7 @@ const SECTIONS: { title: string; items: QA[] }[] = [
       },
       {
         q: "Is there pricing or a hosted sign-up?",
-        a: <p>Not yet. You can self-host it today. Hosted accounts, with Google or GitHub sign-in, are <A href="/roadmap">planned</A>.</p>,
+        a: <p>There is no public pricing. A hosted deployment can take sign-ups with GitHub: the administrator approves each account, which then gets its own graph. You can also self-host it today.</p>,
       },
     ],
   },
@@ -52,15 +52,15 @@ const SECTIONS: { title: string; items: QA[] }[] = [
       },
       {
         q: "Can the hosted version index my GitHub repositories?",
-        a: <p>Not yet. Indexing runs in the self-hosted stack; the hosted deployment serves graphs indexed there. Connecting GitHub and indexing in the cloud are <A href="/roadmap">planned</A>.</p>,
+        a: <p>Yes, when the deployment runs the cloud indexer. On the settings page, add a fine-grained GitHub token limited to the repositories you choose, then connect them. They are indexed straight away, then daily and on every push.</p>,
       },
       {
         q: "Does it keep the graph up to date automatically?",
-        a: <p>No. Re-indexing is on demand with <code>reindex_repository</code>, which re-parses only files that changed. Re-indexing on push is planned.</p>,
+        a: <p>Hosted with the cloud indexer, yes: connected repositories are re-indexed daily and on every push. Self-hosted, re-indexing is on demand with <code>reindex_repository</code>, which re-parses only files that changed.</p>,
       },
       {
         q: "Which AI agents work with it?",
-        a: <p>ContextForge is tested with Claude Code. Any MCP client that supports streamable HTTP and a bearer-token header should work. See <A href="/docs/agents">working with AI agents</A>.</p>,
+        a: <p>CodeGraph is tested with Claude Code. Any MCP client that supports streamable HTTP and a bearer-token header should work. See <A href="/docs/agents">working with AI agents</A>.</p>,
       },
       {
         q: "Does it cover branches or history?",
@@ -68,7 +68,7 @@ const SECTIONS: { title: string; items: QA[] }[] = [
       },
       {
         q: "What does “unresolved” mean?",
-        a: <p>It&apos;s a call the graph couldn&apos;t tie to a node, usually a library call or a name that&apos;s ambiguous. ContextForge marks it instead of guessing.</p>,
+        a: <p>It&apos;s a call the graph couldn&apos;t tie to a node, usually a library call or a name that&apos;s ambiguous. CodeGraph marks it instead of guessing.</p>,
       },
     ],
   },
@@ -76,7 +76,7 @@ const SECTIONS: { title: string; items: QA[] }[] = [
     title: "Data and security",
     items: [
       {
-        q: "Does ContextForge store my source code?",
+        q: "Does CodeGraph store my source code?",
         a: <p>No. It stores names, locations and relationships. Source is read when you open it or an agent asks for a snippet (from your disk when self-hosted, from GitHub when hosted), and it&apos;s never written to the database.</p>,
       },
       {

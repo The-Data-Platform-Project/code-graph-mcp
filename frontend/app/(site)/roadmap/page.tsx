@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Roadmap",
   description:
-    "Where ContextForge is going, by capability: what is available today and what is planned. No dates.",
+    "Where CodeGraph is going, by capability: what is available today and what is planned. No dates.",
   alternates: { canonical: "/roadmap" },
 };
 
@@ -19,11 +19,13 @@ const GROUPS: Group[] = [
     title: "Identity and access",
     blurb: "Who can sign in, and what they can reach.",
     items: [
-      { title: "Owner sign-in", body: "A single owner account with a password and a signed session.", status: "available" },
+      { title: "Owner sign-in", body: "A break-glass owner password with a signed session.", status: "available" },
       { title: "Personal MCP tokens", body: "Hashed, shown once, scoped to one graph, revocable by the administrator.", status: "available" },
-      { title: "Sign in with Google or GitHub", body: "Accounts for other users, through Supabase Auth.", status: "planned" },
-      { title: "Owner approval", body: "New accounts wait for approval; approving one provisions its own graph.", status: "planned" },
-      { title: "Admin portal", body: "Users, graphs, tokens, index jobs and an audit log in one place.", status: "planned" },
+      { title: "Sign in with GitHub", body: "Accounts for other people. GitHub is asked only who they are; repository access is granted separately, per token.", status: "available" },
+      { title: "Two-factor authentication", body: "Authenticator apps with single-use backup codes. Required for administrators and the owner login.", status: "available" },
+      { title: "Owner approval", body: "New accounts wait for approval on the settings page; approving one provisions its own graph.", status: "available" },
+      { title: "Sign in with Google", body: "A second identity provider for people without GitHub accounts.", status: "planned" },
+      { title: "Admin portal", body: "Graphs, tokens, index jobs and an audit log in one place, beyond today's approvals on the settings page.", status: "planned" },
       { title: "Self-service tokens and hardening", body: "Minting your own tokens, token expiry, rate limits and per-user quotas.", status: "planned" },
     ],
   },
@@ -33,7 +35,7 @@ const GROUPS: Group[] = [
     items: [
       { title: "Local repositories", body: "Any repository under a directory mounted read-only into the self-hosted stack.", status: "available" },
       { title: "GitHub source previews", body: "The hosted explorer reads source from each graph's connected GitHub repository.", status: "available" },
-      { title: "GitHub App onboarding", body: "Choose the repositories ContextForge may read by installing its GitHub App; GitHub enforces the choice.", status: "planned" },
+      { title: "Fine-grained GitHub tokens", body: "Keep several tokens, each limited on GitHub to the repositories you choose. Requested from the settings page with read-only permissions filled in, and stored encrypted.", status: "available" },
     ],
   },
   {
@@ -41,8 +43,8 @@ const GROUPS: Group[] = [
     blurb: "Turning code into a graph, and keeping it current.",
     items: [
       { title: "Full and incremental indexing", body: "Self-hosted, on demand; re-indexing parses only changed files.", status: "available" },
-      { title: "Cloud indexing", body: "A job queue and indexing workers, with each job's status and errors visible.", status: "planned" },
-      { title: "Automatic refresh", body: "Re-indexing when a repository changes, triggered by pushes.", status: "planned" },
+      { title: "Cloud indexing", body: "A job queue and indexing workers on AWS Lambda, with each run's status and errors on the settings page.", status: "available" },
+      { title: "Automatic refresh", body: "Re-indexing once a day and on every push, through a GitHub webhook or a GitHub Actions workflow.", status: "available" },
     ],
   },
   {
@@ -81,7 +83,7 @@ export default function RoadmapPage() {
         <div className="container">
           <span className="eyebrow">Roadmap</span>
           <h1 className="display" style={{ fontSize: "clamp(36px, 5vw, 58px)" }}>
-            Where ContextForge is going.
+            Where CodeGraph is going.
           </h1>
           <p className="lede">
             Organized by capability, not by date. <b>Available</b> means you can use it today.{" "}

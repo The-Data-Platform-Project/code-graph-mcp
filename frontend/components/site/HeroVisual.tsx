@@ -10,7 +10,7 @@ const STEPS = [
 ];
 
 /**
- * Hero: the pipeline, a real slice of ContextForge's own graph around
+ * Hero: the pipeline, a real slice of CodeGraph's own graph around
  * Indexer.index_full, and the real answer an agent gets when it asks what
  * that method calls. Static SVG and HTML; the only motion is a CSS sweep
  * across the steps, switched off for reduced motion.
@@ -34,7 +34,7 @@ export default function HeroVisual() {
           className="mini-graph"
           viewBox={`0 0 ${g.width} ${g.height}`}
           role="img"
-          aria-label="A slice of ContextForge's own code graph: the index_full method, what it calls, and what calls it"
+          aria-label="A slice of CodeGraph's own code graph: the index_full method, what it calls, and what calls it"
         >
           {g.links.map((l, i) => {
             const s = g.nodes[l.s];

@@ -45,3 +45,22 @@ export async function query<T>(sql: string, params: unknown[] = []): Promise<T[]
   const result = await pool().query(sql, params);
   return result.rows as T[];
 }
+
+/** Run `fn` in one transaction on one pooled connection; roll back if it throws. */
+export async function transaction<T>(
+  fn: (q: <R>(sql: string, params?: unknown[]) => Promise<R[]>) => Promise<T>,
+): Promise<T> {
+  const client = await pool().connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn(async <R,>(sql: string, params: unknown[] = []) =>
+      (await client.query(sql, params)).rows as R[]);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}

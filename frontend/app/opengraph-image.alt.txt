@@ -1,1 +1,1 @@
-ContextForge: Build context your agents can use.
+CodeGraph: Build context your agents can use.

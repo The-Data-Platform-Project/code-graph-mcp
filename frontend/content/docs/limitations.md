@@ -1,20 +1,20 @@
-ContextForge is useful today, and it's deliberately narrow. This page lists what it doesn't do yet, so you can decide whether it fits before you spend time on it. Several of these are on the [roadmap](/roadmap).
+CodeGraph is useful today, and it's deliberately narrow. This page lists what it doesn't do yet, so you can decide whether it fits before you spend time on it. Several of these are on the [roadmap](/roadmap).
 
 ## Access and onboarding
 
-There's no self-service sign-up. The hosted deployment has one account, the owner, who signs in with a password. Google and GitHub sign-in are planned.
+Hosted sign-up is with GitHub only, and every new account waits for the administrator to approve it. Google sign-in is planned.
 
-Nothing in the product connects to GitHub to pick repositories either. Self-hosted, you mount a directory, and hosted, the administrator loads the graphs.
+Self-hosted, you mount a directory. Hosted, you connect repositories with fine-grained GitHub tokens you create yourself; there's no GitHub App to install instead.
 
 MCP tokens are issued by the administrator. There's no page for minting your own.
 
 ## Indexing
 
-Indexing only happens in the self-hosted stack. The hosted deployment serves graphs but can't index them.
+Hosted indexing needs the cloud indexer (AWS Lambda and SQS) deployed next to the app. Without it, a hosted deployment serves graphs but can't index them.
 
-Re-indexing is manual. There's no file watcher, no schedule and no re-index on push, so you run `reindex_repository` after changes.
+Self-hosted, re-indexing is manual. There's no file watcher, so you run `reindex_repository` after changes. Hosted repositories are re-indexed daily and on every push.
 
-Each repository is a single snapshot, indexed as it is on disk at that moment. There are no branches, commits or history yet.
+Each repository is a single snapshot: as it is on disk, or the latest commit of one branch when hosted. There's no switching between branches and no history yet.
 
 Only the supported languages are parsed. Python and JavaScript/TypeScript get a full symbol and call graph. HTML/Jinja, CSS, JSON and YAML contribute dependencies, and other config files become searchable file nodes. Anything else isn't parsed.
 

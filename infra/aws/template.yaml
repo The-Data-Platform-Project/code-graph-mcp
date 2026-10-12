@@ -1,0 +1,214 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  code-graph cloud indexer. Re-indexes connected GitHub repositories into the
+  graph database once a day and on every push. Everything here fits inside
+  AWS's always-free allowances at personal scale (Lambda, SQS, EventBridge
+  Scheduler, SSM standard parameters); see docs/INDEXER_AWS.md for the sums.
+
+  GitHub push / app "Index now" ──▶ Function URL ─┐
+  EventBridge Scheduler (daily) ─────────────────┴▶ TriggerFunction ──▶ SQS ──▶ WorkerFunction ──▶ Postgres
+
+Parameters:
+  SsmPrefix:
+    Type: String
+    Default: /code-graph
+    AllowedPattern: ^/[A-Za-z0-9/_-]+[A-Za-z0-9_-]$
+    Description: >
+      SSM Parameter Store path holding SecureStrings database-url,
+      github-token-key and indexer-secret (create them once, by hand).
+  DailyScheduleExpression:
+    Type: String
+    Default: cron(0 3 * * ? *)
+    Description: When the daily run starts (EventBridge Scheduler syntax).
+  ScheduleTimezone:
+    Type: String
+    Default: Asia/Singapore
+  WorkerMemoryMB:
+    Type: Number
+    Default: 1024
+    MinValue: 512
+    MaxValue: 3008
+    Description: >
+      Memory for one index run. The indexer holds one parse tree at a time, so
+      1 GB is ample; Lambda also scales CPU with memory.
+  WorkerConcurrency:
+    Type: Number
+    Default: 2
+    MinValue: 2
+    MaxValue: 10
+    Description: >
+      Index runs at once. Kept low so a burst of pushes cannot exhaust the
+      database's connection limit (Supabase's free pooler is small).
+  AlarmEmail:
+    Type: String
+    Default: ""
+    Description: Optional. Email to notify when a job lands in the dead-letter queue.
+
+Conditions:
+  HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, ""]]
+
+Globals:
+  Function:
+    Architectures: [x86_64]
+    Environment:
+      Variables:
+        SSM_PREFIX: !Ref SsmPrefix
+
+Resources:
+  # ── Queue ────────────────────────────────────────────────────────────────
+  # Messages carry only a job id; control.index_jobs is the source of truth.
+  JobQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      # Must exceed the worker's 900 s timeout, or a long run is redelivered mid-way.
+      VisibilityTimeout: 960
+      MessageRetentionPeriod: 345600 # 4 days
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 2
+
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600 # 14 days
+      SqsManagedSseEnabled: true
+
+  # ── Trigger: webhook, "Index now", daily schedule ───────────────────────
+  TriggerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      DockerTag: indexer
+      DockerContext: ../..
+      Dockerfile: infra/aws/Dockerfile
+    Properties:
+      PackageType: Image
+      Description: Verifies GitHub webhooks and app requests, and fans out the daily run; queues jobs.
+      ImageConfig:
+        Command: ["code_graph.etl.aws_lambda.trigger_handler"]
+      MemorySize: 256
+      # GitHub gives a webhook 10 seconds; this only writes rows and messages.
+      Timeout: 15
+      Environment:
+        Variables:
+          QUEUE_URL: !Ref JobQueue
+      LoggingConfig:
+        LogGroup: !Ref TriggerLogs
+      FunctionUrlConfig:
+        # Public on purpose: GitHub cannot sign AWS requests. Every POST is
+        # authenticated in code (etl/signing.py) before anything happens.
+        AuthType: NONE
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt JobQueue.QueueName
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameters
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmPrefix}/*
+      Events:
+        Daily:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: !Ref DailyScheduleExpression
+            ScheduleExpressionTimezone: !Ref ScheduleTimezone
+            Input: '{"source": "schedule"}'
+            RetryPolicy:
+              MaximumRetryAttempts: 2
+
+  # Function URLs with AuthType NONE need lambda:InvokeFunction granted as well
+  # as lambda:InvokeFunctionUrl (which SAM adds); scoped to URL calls only.
+  TriggerFunctionUrlInvoke:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TriggerFunction
+      Action: lambda:InvokeFunction
+      Principal: "*"
+      InvokedViaFunctionUrl: true
+
+  # Named log groups with a retention period, so logs never pile up (or bill).
+  TriggerLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /code-graph/${AWS::StackName}/trigger
+      RetentionInDays: 14
+
+  # ── Worker: one index run per invocation ────────────────────────────────
+  WorkerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      DockerTag: indexer
+      DockerContext: ../..
+      Dockerfile: infra/aws/Dockerfile
+    Properties:
+      PackageType: Image
+      Description: Downloads a commit's tarball from GitHub and indexes it into the tenant's graph.
+      ImageConfig:
+        Command: ["code_graph.etl.aws_lambda.worker_handler"]
+      MemorySize: !Ref WorkerMemoryMB
+      Timeout: 900
+      EphemeralStorage:
+        Size: 2048 # MB of /tmp for the extracted tree
+      Environment:
+        Variables:
+          SCRATCH_DIR: /tmp
+      LoggingConfig:
+        LogGroup: !Ref WorkerLogs
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameters
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmPrefix}/*
+      Events:
+        Jobs:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt JobQueue.Arn
+            BatchSize: 1
+            ScalingConfig:
+              MaximumConcurrency: !Ref WorkerConcurrency
+
+  WorkerLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /code-graph/${AWS::StackName}/worker
+      RetentionInDays: 14
+
+  # ── Optional: email when a job dies twice ───────────────────────────────
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Condition: HasAlarmEmail
+    Properties:
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlarmEmail
+
+  DeadLetterAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasAlarmEmail
+    Properties:
+      AlarmDescription: An index job crashed twice (timeout or out of memory) and was parked.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt DeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+
+Outputs:
+  IndexerUrl:
+    Description: Set as INDEXER_URL on the web app (a trailing slash is ignored).
+    Value: !GetAtt TriggerFunctionUrl.FunctionUrl
+  WebhookUrl:
+    Description: The GitHub webhook payload URL (the app shows it per repository).
+    Value: !Sub "${TriggerFunctionUrl.FunctionUrl}github"
+  JobQueueUrl:
+    Value: !Ref JobQueue
+  DeadLetterQueueUrl:
+    Value: !Ref DeadLetterQueue

@@ -18,10 +18,11 @@ import os
 import sys
 import uuid
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit, urlunsplit
 
 import psycopg
 import pytest
+from psycopg.rows import dict_row
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -54,6 +55,37 @@ def database_url():
     finally:
         admin.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
         admin.close()
+
+@pytest.fixture
+def fresh_dsn():
+    """A brand-new database, dropped afterwards. Yields its DSN.
+
+    For code that creates schemas of its own (`control`, `tenant_*`), which
+    must not collide between tests.
+    """
+    name = f"db_{uuid.uuid4().hex[:10]}"
+    try:
+        admin = psycopg.connect(TEST_DATABASE_URL, autocommit=True)
+    except psycopg.OperationalError as exc:  # pragma: no cover - env problem
+        pytest.skip(f"no Postgres at TEST_DATABASE_URL: {exc}")
+    admin.execute(f'CREATE DATABASE "{name}"')
+    parts = urlsplit(TEST_DATABASE_URL)
+    try:
+        yield urlunsplit(parts._replace(path=f"/{name}"))
+    finally:
+        admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+        admin.close()
+
+
+@pytest.fixture
+def fresh_db(fresh_dsn):
+    """A connection to a brand-new database (see fresh_dsn)."""
+    con = psycopg.connect(fresh_dsn, row_factory=dict_row)
+    try:
+        yield con
+    finally:
+        con.close()
+
 
 _UTILS = '''\
 import json

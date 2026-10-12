@@ -50,12 +50,12 @@ export default function Home() {
               Build context your <span className="grad-text">agents can use.</span>
             </h1>
             <p className="lede">
-              ContextForge parses your repositories into a graph of files, functions and the
+              CodeGraph parses your repositories into a graph of files, functions and the
               calls and imports between them. You can explore that graph in the browser, and
               your AI agent can query it over MCP instead of reading file after file.
             </p>
             <div className="hero-ctas">
-              <a className="btn btn-primary" href={APP_PATH}>Launch ContextForge</a>
+              <a className="btn btn-primary" href={APP_PATH}>Launch CodeGraph</a>
               <Link className="btn btn-ghost" href="/docs/user-guide">Explore the User Guide</Link>
             </div>
             <div className="hero-meta">
@@ -97,7 +97,7 @@ export default function Home() {
             </div>
           </div>
           <p className="statement" style={{ marginTop: 48 }}>
-            So ContextForge writes those relationships down as a graph{" "}
+            So CodeGraph writes those relationships down as a graph{" "}
             <em>you can browse and query.</em>
           </p>
         </div>
@@ -110,7 +110,7 @@ export default function Home() {
             <span className="eyebrow">The context layer</span>
             <h2 className="h2">From source code to connected intelligence.</h2>
             <p className="lede">
-              ContextForge parses the repositories you point it at and builds a graph of files,
+              CodeGraph parses the repositories you point it at and builds a graph of files,
               symbols and how they connect. You can explore it visually, and an AI agent can pull
               exactly the context it needs through MCP.
             </p>
@@ -158,17 +158,17 @@ export default function Home() {
 
           <Screenshot
             src="/site/screens/explorer.png"
-            alt="The ContextForge graph explorer: sidebar with repository selector, search and filters; the repository drawn as a force-directed graph; the README preview panel on the right."
+            alt="The CodeGraph graph explorer: sidebar with repository selector, search and filters; the repository drawn as a force-directed graph; the README preview panel on the right."
             width={1600}
             height={1000}
-            caption="The graph explorer, showing ContextForge's own repository."
+            caption="The graph explorer, showing CodeGraph's own repository."
           />
 
           <div className="split" style={{ marginTop: 72, alignItems: "start" }}>
             <div style={{ display: "grid", gap: 16 }}>
               <h3 className="h3" style={{ fontSize: 24 }}>Try it on a real graph</h3>
               <p className="muted" style={{ margin: 0 }}>
-                Below is the core of ContextForge&apos;s own indexer, {graph.nodes.length} nodes and{" "}
+                Below is the core of CodeGraph&apos;s own indexer, {graph.nodes.length} nodes and{" "}
                 {graph.links.length} relationships exported from a real index of the{" "}
                 <code>{DEMO_REPO}</code> repository. Hover a node to see what it&apos;s connected to,
                 and click it (or any connection in the panel) to move through the code.
@@ -210,7 +210,7 @@ export default function Home() {
             <span className="eyebrow">Built for agentic workflows</span>
             <h2 className="h2">Give agents context, not just code snippets.</h2>
             <p className="lede">
-              ContextForge serves the graph over MCP, so an agent can search symbols, follow call
+              CodeGraph serves the graph over MCP, so an agent can search symbols, follow call
               chains, check what a file depends on and pull just the source it needs.
             </p>
             <ul className="feature-list">
@@ -220,7 +220,7 @@ export default function Home() {
             </ul>
             <p className="faint" style={{ margin: 0, fontSize: 14 }}>
               Left: the <code>.mcp.json</code> shipped in the repository, and a real call against
-              ContextForge&apos;s own graph.
+              CodeGraph&apos;s own graph.
             </p>
             <Link className="link-arrow" href="/docs/agents">Explore agent integration</Link>
           </div>
@@ -232,7 +232,7 @@ export default function Home() {
       <section className="section" id="how-it-works">
         <div className="container">
           <div className="section-head">
-            <span className="eyebrow">How ContextForge works</span>
+            <span className="eyebrow">How CodeGraph works</span>
             <h2 className="h2">A clearer path from source to understanding.</h2>
           </div>
           <ol className="steps" style={{ listStyle: "none", padding: 0, margin: 0 }}>
@@ -266,7 +266,7 @@ export default function Home() {
             <div className="mode">
               <span className="badge badge-available">Hosted · available</span>
               <h3 className="h3">Serve a graph from the cloud</h3>
-              <p>The web app on Vercel serves the explorer and <code>/api/mcp</code> from a Supabase database. It serves graphs indexed in a self-hosted stack; hosted indexing is <Link href="/roadmap" style={{ color: "var(--sky)" }}>planned</Link>.</p>
+              <p>The web app on Vercel serves the explorer and <code>/api/mcp</code> from a Supabase database. People sign in with GitHub and connect repositories with fine-grained tokens; a cloud indexer on AWS keeps them current, daily and on every push.</p>
             </div>
           </div>
         </div>
@@ -281,7 +281,7 @@ export default function Home() {
                 <span className="badge badge-vision" style={{ justifySelf: "start" }}>The vision · future direction</span>
                 <h2 className="h2">From repository exploration to a living map of your software.</h2>
                 <p className="lede">
-                  Where we&apos;re taking ContextForge is a hosted platform: you sign in, connect
+                  Where we&apos;re taking CodeGraph is a hosted platform: you sign in, connect
                   your repositories, and they get indexed and kept up to date for you.
                 </p>
                 <p className="muted" style={{ margin: 0 }}>
@@ -292,10 +292,9 @@ export default function Home() {
                 <Link className="link-arrow" href="/roadmap">See the roadmap</Link>
               </div>
               <ul aria-label="Planned capabilities">
-                <li>Sign in with Google or GitHub, with owner approval</li>
-                <li>Choose repositories through a GitHub App</li>
-                <li>Cloud indexing with background jobs and status</li>
-                <li>Re-indexing when repositories change</li>
+                <li>Sign in with Google</li>
+                <li>An admin portal with an audit log</li>
+                <li>Self-service MCP tokens, quotas and rate limits</li>
                 <li>Organization-level, multi-repository exploration</li>
                 <li>Richer architectural grouping and more languages</li>
                 <li>History across branches and commits</li>
@@ -317,7 +316,7 @@ export default function Home() {
               of a pile of files.
             </p>
             <div className="hero-ctas" style={{ justifyContent: "center" }}>
-              <a className="btn btn-primary" href={APP_PATH}>Launch ContextForge</a>
+              <a className="btn btn-primary" href={APP_PATH}>Launch CodeGraph</a>
               <Link className="btn btn-ghost" href="/docs/user-guide">Read the User Guide</Link>
             </div>
           </div>

@@ -31,7 +31,7 @@ export default function SiteHeader() {
     <header className="site-header">
       <a className="skip" href="#main">Skip to content</a>
       <div className="container bar">
-        <Link href="/" aria-label="ContextForge home">
+        <Link href="/" aria-label="CodeGraph home">
           <Logo id="hdr" size={30} />
         </Link>
         <nav className="site-nav" aria-label="Main">

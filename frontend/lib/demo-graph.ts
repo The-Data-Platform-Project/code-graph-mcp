@@ -3,7 +3,7 @@ import { forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY
 import demo from "@/content/demo-graph.json";
 
 /**
- * The public demo graph: the Python core of ContextForge's own repository
+ * The public demo graph: the Python core of CodeGraph's own repository
  * (src/code_graph/, extractors excluded), exported from a real index. It is
  * the only graph data the public site shows — no other repository appears.
  *

@@ -37,14 +37,31 @@ export function ownerTenantSlug(): string {
   return process.env.OWNER_TENANT_SLUG?.trim() || "owner";
 }
 
+/**
+ * The owner's break-glass password. Its strength is enforced, not trusted:
+ * lib/password-policy.ts checks length, character classes, the 10,000 most
+ * common passwords, zxcvbn and Have I Been Pwned before any login uses it.
+ */
 export function ownerPassword(): string {
-  const value = required("OWNER_PASSWORD");
-  // A single shared password is the only thing in front of this page until
-  // Supabase Auth lands, so refuse a weak one rather than run with it.
-  if (value.length < 12) {
-    throw new Error("OWNER_PASSWORD must be at least 12 characters.");
+  return required("OWNER_PASSWORD");
+}
+
+/**
+ * The owner login's TOTP secret (base32). Password sign-in is refused without
+ * it: the owner login is an administrator, and administrators need 2FA.
+ * Generate one with `node --experimental-strip-types scripts/owner-totp.mts`.
+ */
+export function ownerTotpSecret(): string {
+  const value = (process.env.OWNER_TOTP_SECRET ?? "").replace(/\s/g, "").toUpperCase();
+  if (!/^[A-Z2-7]{32,}$/.test(value)) {
+    throw new Error("OWNER_TOTP_SECRET must be a base32 secret of at least 160 bits (32 characters).");
   }
   return value;
+}
+
+/** Seals users' TOTP secrets at rest (64 hex characters: openssl rand -hex 32). */
+export function mfaKeyHex(): string {
+  return required("MFA_ENCRYPTION_KEY");
 }
 
 export function sessionSecret(): string {
@@ -53,6 +70,64 @@ export function sessionSecret(): string {
     throw new Error("SESSION_SECRET must be at least 32 characters (openssl rand -hex 32).");
   }
   return value;
+}
+
+// ── Sign-in with GitHub ─────────────────────────────────────────────────────
+
+/**
+ * The GitHub OAuth app people sign up with, or null when it is not set up (the
+ * login page then offers only the owner password). Sign-in asks GitHub for
+ * identity only (`read:user user:email`); repository access comes from the
+ * fine-grained tokens people add on /settings.
+ */
+export function githubOAuth(): { clientId: string; clientSecret: string } | null {
+  const clientId = process.env.GITHUB_OAUTH_CLIENT_ID?.trim() ?? "";
+  const clientSecret = process.env.GITHUB_OAUTH_CLIENT_SECRET?.trim() ?? "";
+  return clientId && clientSecret ? { clientId, clientSecret } : null;
+}
+
+/**
+ * The owner's GitHub login. Signing in with it lands in the owner's existing
+ * tenant as a platform admin, with no approval step; everyone else waits for
+ * the owner to approve them.
+ */
+export function ownerGithubLogin(): string {
+  return process.env.OWNER_GITHUB_LOGIN?.trim().toLowerCase() ?? "";
+}
+
+/**
+ * The owner's numeric GitHub user id. Logins can be renamed and then claimed
+ * by someone else; ids never change. When set, it alone decides who is the
+ * owner. Find yours at https://api.github.com/users/<login> ("id").
+ */
+export function ownerGithubId(): number | null {
+  const raw = process.env.OWNER_GITHUB_ID?.trim() ?? "";
+  return /^\d{1,18}$/.test(raw) ? Number(raw) : null;
+}
+
+/** The site's own origin, when the request's cannot be trusted (proxies). */
+export function publicAppUrl(): string {
+  return process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "") ?? "";
+}
+
+/** The AES-256-GCM key GitHub tokens are sealed with (lib/secretbox.ts). */
+export function githubTokenKeyHex(): string {
+  return required("GITHUB_TOKEN_KEY");
+}
+
+// ── The cloud indexer (infra/aws) ───────────────────────────────────────────
+
+/** The indexer's Function URL, or "" when no indexer is deployed. */
+export function indexerUrl(): string {
+  return process.env.INDEXER_URL?.trim().replace(/\/+$/, "") ?? "";
+}
+
+/**
+ * Shared with the indexer: signs "Index now" requests and derives each
+ * connection's GitHub webhook secret (lib/indexer.ts, etl/signing.py).
+ */
+export function indexerSecret(): string {
+  return process.env.INDEXER_SECRET?.trim() ?? "";
 }
 
 // ── Source text ─────────────────────────────────────────────────────────────

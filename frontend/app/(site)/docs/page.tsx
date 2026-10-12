@@ -6,7 +6,7 @@ import { DOCS_NAV, docBySlug, pagerFor } from "@/lib/docs";
 export const metadata: Metadata = {
   title: "Documentation",
   description:
-    "How to run ContextForge, index repositories, explore the graph, and connect AI agents over MCP.",
+    "How to run CodeGraph, index repositories, explore the graph, and connect AI agents over MCP.",
   alternates: { canonical: "/docs" },
 };
 
@@ -23,7 +23,7 @@ const PATHS: { title: string; body: string; href: string }[] = [
   },
   {
     title: "Connect an agent",
-    body: "Add ContextForge to Claude Code's MCP config and query the graph from your editor.",
+    body: "Add CodeGraph to Claude Code's MCP config and query the graph from your editor.",
     href: "/docs/agents",
   },
   {
@@ -40,13 +40,13 @@ export default function DocsIndex() {
       nav={DOCS_NAV}
       current="/docs"
       eyebrow="Documentation"
-      title="ContextForge documentation"
+      title="CodeGraph documentation"
       description="Practical guides for the product as it exists today: a code graph you index, explore in the browser, and query from AI agents over MCP."
       pager={pagerFor("/docs")}
     >
       <div className="prose">
         <p>
-          ContextForge parses repositories into a graph of files, classes, functions, methods
+          CodeGraph parses repositories into a graph of files, classes, functions, methods
           and the relationships between them (imports, calls, inheritance) and stores that
           structure in Postgres. You can get at it two ways: the graph explorer in your browser,
           or the MCP endpoint, which coding agents query instead of grepping and reading files.
@@ -82,7 +82,7 @@ export default function DocsIndex() {
           ))}
         </ul>
         <p>
-          The project behind ContextForge is <code>code-graph-mcp</code>. Configuration and
+          The project behind CodeGraph is <code>code-graph-mcp</code>. Configuration and
           identifiers keep that name: the MCP server is <code>code-graph</code>, and variables
           are named <code>CODE_GRAPH_*</code>.
         </p>

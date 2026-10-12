@@ -1,10 +1,10 @@
 ## Introduction
 
-ContextForge turns a codebase into a graph. Files, classes, functions and methods are the nodes, and the relationships between them are the edges: a file imports a module, a function calls another, a class inherits from a base. That graph lives in Postgres, and you can get at it two ways. There's the graph explorer, a web view for people, and an MCP endpoint for AI coding agents like Claude Code.
+CodeGraph turns a codebase into a graph. Files, classes, functions and methods are the nodes, and the relationships between them are the edges: a file imports a module, a function calls another, a class inherits from a base. That graph lives in Postgres, and you can get at it two ways. There's the graph explorer, a web view for people, and an MCP endpoint for AI coding agents like Claude Code.
 
-So why bother? To answer "what calls this function?", an agent without a graph searches the codebase and reads file after file. With the graph it makes one tool call and gets back a short, structured list. The graph provides the structure and the agent does the reasoning, since ContextForge has no model and no chat of its own.
+So why bother? To answer "what calls this function?", an agent without a graph searches the codebase and reads file after file. With the graph it makes one tool call and gets back a short, structured list. The graph provides the structure and the agent does the reasoning, since CodeGraph has no model and no chat of its own.
 
-ContextForge stores structure only. Your source text is never written to its database, and previews and snippets are read fresh from the source every time.
+CodeGraph stores structure only. Your source text is never written to its database, and previews and snippets are read fresh from the source every time.
 
 ## Concepts
 
@@ -50,7 +50,7 @@ When a function calls `helper()`, the indexer works out which node that is by go
 3. the same file,
 4. a single symbol with that name anywhere in the repository.
 
-If none of those apply, the call is recorded as unresolved, along with the raw text of the call. ContextForge never guesses. Calls into libraries (`os.path.join`, `con.close`) usually end up unresolved because the library isn't in the graph.
+If none of those apply, the call is recorded as unresolved, along with the raw text of the call. CodeGraph never guesses. Calls into libraries (`os.path.join`, `con.close`) usually end up unresolved because the library isn't in the graph.
 
 ## Supported languages
 
@@ -71,9 +71,9 @@ References also resolve across languages. An HTML page links to the scripts and 
 
 ### Where repositories come from
 
-Indexing runs in the self-hosted stack. The MCP server reads repositories from the directory mounted at `/workspaces` (`REPOS_HOST_PATH` in `.env`), read-only. Any repository under that directory can be indexed, and if you clone a new one there it's indexable straight away, no restart needed.
+Self-hosted, the MCP server reads repositories from the directory mounted at `/workspaces` (`REPOS_HOST_PATH` in `.env`), read-only. Any repository under that directory can be indexed, and if you clone a new one there it's indexable straight away, no restart needed.
 
-Connecting repositories from GitHub and indexing in the cloud are [planned](/roadmap). The hosted deployment doesn't index today.
+Hosted, repositories come from GitHub instead: see [connecting GitHub repositories](#connecting-github-repositories-hosted) below.
 
 ### Index
 
@@ -119,6 +119,34 @@ Then spot-check it with a query you already know the answer to, something like `
 
 The indexer holds one parse tree in memory at a time and commits in batches. In the project's own measurements it peaked at 122 MiB indexing a 700+ file, 75k-edge repository, against the container's hard 500 MiB limit.
 
+## Connecting GitHub repositories (hosted)
+
+On a hosted deployment with the cloud indexer, you add repositories yourself, on **Settings** (`/settings`, linked from the explorer's sidebar).
+
+### Sign in
+
+Choose **Continue with GitHub**. GitHub only asks to share who you are (`read:user`, `user:email`), so signing in grants no access to any repository. The first time, your account waits for the administrator to approve it. Approval gives you your own graph, separate from everyone else's.
+
+### Add a token
+
+Repository access comes from **fine-grained personal access tokens**, which GitHub limits to the repositories you pick. Keep as many as you like: one for your own repositories and one per organization, say.
+
+1. Under **GitHub tokens**, fill in a label, the repository owner (you or an organization) and an expiry, then **Create on GitHub**. GitHub's token form opens with the name, owner, expiry and permissions filled in: read-only *Contents* and *Metadata*, plus *Webhooks* (read and write) if you left that box ticked.
+2. On GitHub, under **Repository access**, choose **Only select repositories** and pick them. Generate the token and copy it.
+3. Paste it into **Paste it here** and save.
+
+The app checks the token with GitHub before keeping it: it has to be fine-grained (`github_pat_…`), valid, and yours. It's stored encrypted and only ever used on the server. **Check** re-validates a token; **Remove** forgets it (revoke it on GitHub too).
+
+### Connect a repository
+
+Under **Repositories**, choose a token, pick one of the repositories GitHub granted it, optionally rename it or pin a branch, and **Connect**. The first index run starts straight away. After that, a repository is re-indexed:
+
+- **daily**, if *daily* is ticked;
+- **on every push** to its branch, if *on push* is ticked and a webhook is in place: **Webhook** adds it with the token (needs the *Webhooks* permission), or shows the URL and secret to add it by hand. A GitHub Actions workflow can send the same request instead (`.github/workflows/index-on-push.yml` in this project is a template);
+- **now**, with **Index now**.
+
+Each run indexes the branch's latest commit, re-parsing only changed files, and is listed under **Recent index runs** with its result or error. A daily run with no new commits is skipped. Source previews then read that exact commit, so their line numbers match the graph.
+
 ## Exploring the graph
 
 The explorer lives at `/graph` and needs you to sign in. Pick a repository, search for a symbol, filter by node and edge type, and click any node to open its Symbol, File and Connections tabs. The [graph explorer guide](/docs/explorer) has the details.
@@ -133,7 +161,7 @@ What gets stored, what doesn't, and who can reach a graph are all in [security a
 
 ## Limitations
 
-What ContextForge doesn't do yet, including hosted indexing, branches and history, is listed in [limitations](/docs/limitations).
+What CodeGraph doesn't do yet, including hosted indexing, branches and history, is listed in [limitations](/docs/limitations).
 
 ## Troubleshooting
 

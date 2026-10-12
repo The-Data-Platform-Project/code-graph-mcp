@@ -317,6 +317,12 @@ def test_a_wrong_token_is_refused(indexed):
         )
 
 
+def test_a_non_ascii_token_is_refused_not_crashed(indexed):
+    with _gated_client(indexed, "sekrit") as client:
+        res = client.get("/api/graph", headers={"Authorization": "Bearer s\u00e9krit".encode("latin-1")})
+        assert res.status_code == 401
+
+
 def test_the_right_token_passes_either_header(indexed):
     with _gated_client(indexed, "sekrit") as client:
         assert (

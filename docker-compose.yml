@@ -109,6 +109,22 @@ services:
       # Used when MCP_BACKEND=proxy: the Python server on this network.
       - MCP_UPSTREAM_URL=${MCP_UPSTREAM_URL:-http://code-graph-mcp:8765/mcp}
       - MCP_UPSTREAM_TOKEN=${CODE_GRAPH_TOKEN}
+      # Optional: sign-in with GitHub, /settings, and the cloud indexer
+      # (.env.example explains each).
+      - GITHUB_OAUTH_CLIENT_ID=${GITHUB_OAUTH_CLIENT_ID:-}
+      - GITHUB_OAUTH_CLIENT_SECRET=${GITHUB_OAUTH_CLIENT_SECRET:-}
+      - OWNER_GITHUB_LOGIN=${OWNER_GITHUB_LOGIN:-}
+      - OWNER_GITHUB_ID=${OWNER_GITHUB_ID:-}
+      - PUBLIC_APP_URL=${PUBLIC_APP_URL:-}
+      - GITHUB_TOKEN_KEY=${GITHUB_TOKEN_KEY:-}
+      - INDEXER_URL=${INDEXER_URL:-}
+      - INDEXER_SECRET=${INDEXER_SECRET:-}
+      # Sign-in security (.env.example): the owner login's 2FA secret, the key
+      # sealing users' 2FA secrets, and the optional CAPTCHA.
+      - OWNER_TOTP_SECRET=${OWNER_TOTP_SECRET:-}
+      - MFA_ENCRYPTION_KEY=${MFA_ENCRYPTION_KEY:-}
+      - TURNSTILE_SITE_KEY=${TURNSTILE_SITE_KEY:-}
+      - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY:-}
     mem_limit: "512m"
 
   ngrok:

@@ -4,20 +4,28 @@
  * Web Crypto only — no Node APIs — because middleware runs on the Edge runtime
  * and must verify the same cookie the Node route handlers issue.
  *
- * This is the owner-login session, standing in for real sign-in. When Supabase
- * Auth (Google/GitHub) lands, it replaces the issuer; the payload shape — who
- * the viewer is, which tenant, which role — is what the rest of the app reads.
+ * The cookie names a server-side session (control.sessions, lib/sessions.ts)
+ * by its random id, `sid`. The signature lets the Edge middleware turn away
+ * forged or expired cookies without a database round trip; the session row is
+ * what actually grants access, so signing out, suspension and "sign out
+ * everywhere" take effect on the next request. `mfa` tells the middleware
+ * whether the second factor is still owed.
  */
 
 export const SESSION_COOKIE = "cg_session";
 export const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
+/** A sign-in waiting for its 2FA code expires quickly. */
+export const PENDING_TTL_SECONDS = 10 * 60;
 
 export type Role = "owner" | "admin" | "member";
+export type MfaState = "none" | "pending" | "verified";
 
 export type SessionPayload = {
-  sub: string;          // who: "owner" today, an auth user id later
+  sid: string;          // random session id; its SHA-256 keys control.sessions
+  sub: string;          // who: "owner" (password login) or "user:<control.users.id>"
   tenant: string;       // tenant slug
   role: Role;
+  mfa: MfaState;
   exp: number;          // unix seconds
 };
 
@@ -73,6 +81,8 @@ export async function verifySession(
     const payload = JSON.parse(dec.decode(fromB64url(body))) as SessionPayload;
     if (typeof payload.exp !== "number" || payload.exp < Date.now() / 1000) return null;
     if (typeof payload.tenant !== "string" || typeof payload.sub !== "string") return null;
+    if (typeof payload.sid !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(payload.sid)) return null;
+    if (payload.mfa !== "none" && payload.mfa !== "pending" && payload.mfa !== "verified") return null;
     return payload;
   } catch {
     return null;
